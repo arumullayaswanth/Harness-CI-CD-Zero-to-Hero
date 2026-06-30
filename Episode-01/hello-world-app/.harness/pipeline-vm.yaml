@@ -1,0 +1,68 @@
+# ============================================
+# PIPELINE: VM (Virtual Machine Pool - Delegate Required)
+# ============================================
+# Prerequisites:
+# 1. Harness Delegate installed
+# 2. VM Pool configured in Harness (AWS, Azure, or GCP VMs)
+# 3. Pool name configured in Harness Infrastructure
+#
+# How to set up VM Pool:
+#   Go to: Project Settings > Delegates > + New Delegate
+#   Then: Account Settings > Resources > Infrastructure > + New Infrastructure
+#   Create a VM pool with your cloud provider
+#
+# CHANGE THESE VALUES:
+# - projectIdentifier: Your project ID
+# - orgIdentifier: Your org name
+# - connectorRef: Your GitHub connector
+# - poolName: Your VM pool name
+# ============================================
+pipeline:
+  name: pipeline-vm
+  identifier: pipeline_vm
+  # CHANGE THIS: Your project ID (find in URL after /projects/)
+  projectIdentifier: HarnessCICDZerotoHero
+  # CHANGE THIS: Your organization name
+  orgIdentifier: default
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        # CHANGE THIS: Your GitHub connector
+        connectorRef: account.Github
+        # CHANGE THIS: Your repo name
+        repoName: Harness-CI-CD-Zero-to-Hero
+        build: <+input>
+  stages:
+    - stage:
+        name: dev
+        identifier: dev
+        description: "Build using VM Pool"
+        type: CI
+        spec:
+          cloneCodebase: true
+          infrastructure:
+            type: VM
+            spec:
+              type: Pool
+              spec:
+                # CHANGE THIS: Your VM pool name (created in Harness Infrastructure settings)
+                poolName: mypool
+                os: Linux
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Build and Run
+                  identifier: build_and_run
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "=== Building Hello World (VM Pool) ==="
+                      cd Episode-01/hello-world-app
+                      mvn clean package -q
+                      echo ""
+                      echo "=== Running the App ==="
+                      java -jar target/hello-world-1.0.0.jar
+                      echo ""
+                      echo "=== Pipeline Success! ==="

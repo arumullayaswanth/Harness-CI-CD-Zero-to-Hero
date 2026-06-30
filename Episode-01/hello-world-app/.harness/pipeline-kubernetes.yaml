@@ -1,0 +1,73 @@
+# ============================================
+# PIPELINE: Kubernetes Cluster (Delegate Required)
+# ============================================
+# Prerequisites:
+# 1. A running Kubernetes cluster (EKS, GKE, AKS, minikube, or kind)
+# 2. Harness Delegate installed in the cluster
+# 3. Kubernetes connector created in Harness
+#
+# How to install Delegate on Kubernetes:
+#   Go to: Project Settings > Delegates > + New Delegate > Kubernetes
+#   Download YAML > kubectl apply -f harness-delegate.yaml
+#   Wait 2 min > Delegate shows "Connected"
+#
+# CHANGE THESE VALUES:
+# - projectIdentifier: Your project ID
+# - orgIdentifier: Your org name
+# - connectorRef (codebase): Your GitHub connector
+# - connectorRef (infrastructure): Your Kubernetes connector
+# - namespace: Namespace where builds will run
+# ============================================
+pipeline:
+  name: pipeline-kubernetes
+  identifier: pipeline_kubernetes
+  # CHANGE THIS: Your project ID (find in URL after /projects/)
+  projectIdentifier: HarnessCICDZerotoHero
+  # CHANGE THIS: Your organization name
+  orgIdentifier: default
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        # CHANGE THIS: Your GitHub connector
+        connectorRef: account.Github
+        # CHANGE THIS: Your repo name
+        repoName: Harness-CI-CD-Zero-to-Hero
+        build: <+input>
+  stages:
+    - stage:
+        name: dev
+        identifier: dev
+        description: "Build using Kubernetes cluster"
+        type: CI
+        spec:
+          cloneCodebase: true
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              # CHANGE THIS: Your Kubernetes connector name
+              connectorRef: account.k8sconnector
+              # CHANGE THIS: Namespace for builds (create it first: kubectl create ns harness-builds)
+              namespace: harness-builds
+              automountServiceAccountToken: true
+              os: Linux
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Build and Run
+                  identifier: build_and_run
+                  spec:
+                    # CHANGE THIS: Your Docker Hub connector (to pull the maven image)
+                    connectorRef: account.dockerhub
+                    image: maven:3.9-eclipse-temurin-11
+                    shell: Sh
+                    command: |-
+                      echo "=== Building Hello World (Kubernetes) ==="
+                      cd Episode-01/hello-world-app
+                      mvn clean package -q
+                      echo ""
+                      echo "=== Running the App ==="
+                      java -jar target/hello-world-1.0.0.jar
+                      echo ""
+                      echo "=== Pipeline Success! ==="

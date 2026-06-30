@@ -1,0 +1,65 @@
+# ============================================
+# PIPELINE: Local Docker Runner (Delegate Required)
+# ============================================
+# Prerequisites:
+# 1. Install Harness Delegate on your machine (docker run command from Harness UI)
+# 2. Install Harness Docker Runner on same machine
+# 3. Docker Desktop must be running
+#
+# How to install Delegate + Runner:
+#   Go to: Project Settings > Delegates > + New Delegate > Docker
+#   Copy the docker-compose command and run it
+#
+# CHANGE THESE VALUES:
+# - projectIdentifier: Your project ID
+# - orgIdentifier: Your org name
+# - connectorRef: Your GitHub connector name
+# ============================================
+pipeline:
+  name: pipeline-docker
+  identifier: pipeline_docker
+  # CHANGE THIS: Your project ID (find in URL after /projects/)
+  projectIdentifier: HarnessCICDZerotoHero
+  # CHANGE THIS: Your organization name
+  orgIdentifier: default
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        # CHANGE THIS: Your GitHub connector
+        connectorRef: account.Github
+        # CHANGE THIS: Your repo name
+        repoName: Harness-CI-CD-Zero-to-Hero
+        build: <+input>
+  stages:
+    - stage:
+        name: dev
+        identifier: dev
+        description: "Build using Local Docker Runner"
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Docker
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Build and Run
+                  identifier: build_and_run
+                  spec:
+                    shell: Sh
+                    image: maven:3.9-eclipse-temurin-11
+                    command: |-
+                      echo "=== Building Hello World (Docker Runner) ==="
+                      cd Episode-01/hello-world-app
+                      mvn clean package -q
+                      echo ""
+                      echo "=== Running the App ==="
+                      java -jar target/hello-world-1.0.0.jar
+                      echo ""
+                      echo "=== Pipeline Success! ==="
