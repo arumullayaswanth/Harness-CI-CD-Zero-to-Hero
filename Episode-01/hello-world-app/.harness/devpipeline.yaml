@@ -1,0 +1,46 @@
+pipeline:
+  name: devpipeline
+  identifier: devpipeline
+  projectIdentifier: HarnessCICDZerotoHero
+  orgIdentifier: default
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: account.Github
+        build: <+input>
+  stages:
+    - stage:
+        name: dev
+        identifier: dev
+        description: ""
+        type: CI
+        spec:
+          cloneCodebase: true
+          caching:
+            enabled: true
+            override: true
+          buildIntelligence:
+            enabled: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Run_1
+                  identifier: Run_1
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "=== Building Hello World ===" 
+                      mvn clean package -q    
+                      echo ""  
+                      echo "=== Running the App ===" 
+                      java -jar target/hello-world-1.0.0.jar
+                      echo "" 
+                      echo "=== Pipeline Success! ==="
