@@ -1,4 +1,4 @@
-If you want to make the **best Harness series on YouTube**, don't split it into 30 small videos. Make it **10 in-depth episodes (1.5–3 hours each)** where each episode builds a real-world enterprise CI/CD platform. This format performs well because viewers prefer complete, project-based learning.
+
 
 # Harness CI/CD Zero to Hero (10 Episodes)
 
