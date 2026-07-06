@@ -1,16 +1,9 @@
 # ============================================
 # PIPELINE: Go App - Docker Delegate on AWS EC2
-# WITH AUTOMATIC ROLLBACK
 # ============================================
 #
-# HOW ROLLBACK WORKS:
-#   - Builds image with tag = build number (1, 2, 3...)
-#   - If pipeline SUCCEEDS: keeps image, updates "latest" tag
-#   - If pipeline FAILS: deletes failed tag, keeps previous "latest"
-#   - Rollback data stored in /tmp/harness/ on EC2
-#
 # WHAT YOU NEED:
-#   1. AWS EC2 with Docker + Delegate + Runner
+#   1. AWS EC2 with Docker + Delegate (--network host) + Runner v0.1.20
 #   2. GitHub connector (account.Github)
 #   3. Docker Hub connector (dockerhub) at project level
 #   4. Secret "docker-hub-password"
@@ -42,7 +35,7 @@ pipeline:
     - stage:
         name: build-go
         identifier: build_go
-        description: "Build, test, push Go app with automatic rollback"
+        description: "Build, test, push Go app"
         type: CI
         spec:
           cloneCodebase: true
@@ -54,28 +47,7 @@ pipeline:
             spec: {}
           execution:
             steps:
-              # Step 1: Save current state (for rollback)
-              - step:
-                  type: Run
-                  name: Save Rollback Data
-                  identifier: save_rollback
-                  spec:
-                    shell: Sh
-                    image: alpine:latest
-                    command: |-
-                      echo "=== Step 1: Saving Rollback Data ==="
-                      mkdir -p /tmp/harness
-                      echo "Current build: <+pipeline.sequenceId>"
-                      if [ -f /tmp/harness/last-successful-tag.txt ]; then
-                        PREV_TAG=$(cat /tmp/harness/last-successful-tag.txt)
-                        echo "Previous successful tag: $PREV_TAG"
-                      else
-                        echo "No previous successful build found (first run)"
-                        echo "none" > /tmp/harness/last-successful-tag.txt
-                      fi
-                      echo "=== Rollback data saved ==="
-
-              # Step 2: Run unit tests
+              # Step 1: Run unit tests
               - step:
                   type: Run
                   name: Run Tests
@@ -84,12 +56,12 @@ pipeline:
                     shell: Sh
                     image: golang:1.21-alpine
                     command: |-
-                      echo "=== Step 2: Running Go Tests ==="
+                      echo "=== Step 1: Running Go Tests ==="
                       cd Episode-03/go-project
                       go test -v ./...
                       echo "=== All Tests Passed! ==="
 
-              # Step 3: Lint Check (code quality/formatting)
+              # Step 2: Lint Check
               - step:
                   type: Run
                   name: Lint Check
@@ -98,20 +70,12 @@ pipeline:
                     shell: Sh
                     image: golangci/golangci-lint:latest
                     command: |-
-                      echo "=== Step 3: Running Lint Check ==="
+                      echo "=== Step 2: Running Lint Check ==="
                       cd Episode-03/go-project
                       golangci-lint run ./... || echo "Lint warnings found (non-blocking)"
-                      echo ""
-                      echo "Checking code formatting..."
-                      gofmt -l . | tee /tmp/fmt_output.txt
-                      if [ -s /tmp/fmt_output.txt ]; then
-                        echo "⚠️ Some files need formatting (run: gofmt -w .)"
-                      else
-                        echo "✅ All files properly formatted!"
-                      fi
                       echo "=== Lint Check Done! ==="
 
-              # Step 4: Code Coverage
+              # Step 3: Code Coverage
               - step:
                   type: Run
                   name: Code Coverage
@@ -120,18 +84,15 @@ pipeline:
                     shell: Sh
                     image: golang:1.21-alpine
                     command: |-
-                      echo "=== Step 4: Checking Code Coverage ==="
+                      echo "=== Step 3: Code Coverage ==="
                       cd Episode-03/go-project
                       go test -coverprofile=coverage.out ./...
-                      echo ""
-                      echo "--- Coverage Report ---"
                       go tool cover -func=coverage.out
-                      echo ""
                       COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
                       echo "Total Coverage: $COVERAGE"
-                      echo "=== Coverage Report Done! ==="
+                      echo "=== Coverage Done! ==="
 
-              # Step 5: Build the Go binary
+              # Step 4: Build Go binary
               - step:
                   type: Run
                   name: Build App
@@ -140,14 +101,13 @@ pipeline:
                     shell: Sh
                     image: golang:1.21-alpine
                     command: |-
-                      echo "=== Step 5: Building Go App ==="
+                      echo "=== Step 4: Building Go App ==="
                       cd Episode-03/go-project
                       go build -o main .
-                      echo "Binary size:"
                       ls -lh main
                       echo "=== Build Successful! ==="
 
-              # Step 6: Run app and verify endpoints
+              # Step 5: Run app and verify
               - step:
                   type: Run
                   name: Verify App
@@ -156,21 +116,19 @@ pipeline:
                     shell: Sh
                     image: golang:1.21-alpine
                     command: |-
-                      echo "=== Step 6: Verifying App Works ==="
+                      echo "=== Step 5: Verifying App ==="
                       cd Episode-03/go-project
                       go build -o main .
                       ./main &
                       sleep 2
-                      echo "Testing / endpoint:"
                       wget -qO- http://localhost:8080/
                       echo ""
-                      echo "Testing /health endpoint:"
                       wget -qO- http://localhost:8080/health
                       echo ""
                       echo "=== App Verified! ==="
                       kill %1 2>/dev/null || true
 
-              # Step 7: Build and Push Docker image
+              # Step 6: Build and Push Docker image
               - step:
                   type: BuildAndPushDockerRegistry
                   name: Build and Push to Docker Hub
@@ -184,76 +142,28 @@ pipeline:
                     dockerfile: Episode-03/go-project/Dockerfile
                     context: Episode-03/go-project
 
-              # Step 8: Verify image pushed to Docker Hub
+              # Step 7: Verify image on Docker Hub
               - step:
                   type: Run
-                  name: Verify Docker Hub Push
+                  name: Verify Push
                   identifier: verify_push
                   spec:
                     shell: Sh
                     image: alpine:latest
                     command: |-
-                      echo "=== Step 8: Verifying Image on Docker Hub ==="
+                      echo "=== Step 7: Verifying Image on Docker Hub ==="
                       apk add --no-cache curl > /dev/null 2>&1
-                      echo ""
-                      echo "Checking: <+variable.docker_username>/go-harness-app:<+pipeline.sequenceId>"
                       STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://hub.docker.com/v2/repositories/<+variable.docker_username>/go-harness-app/tags/<+pipeline.sequenceId>/)
                       if [ "$STATUS" = "200" ]; then
                         echo "✅ Image tag <+pipeline.sequenceId> EXISTS on Docker Hub!"
                       else
                         echo "❌ Image NOT found (status: $STATUS)"
-                        exit 1
-                      fi
-                      echo ""
-                      echo "Checking: <+variable.docker_username>/go-harness-app:latest"
-                      STATUS2=$(curl -s -o /dev/null -w "%{http_code}" https://hub.docker.com/v2/repositories/<+variable.docker_username>/go-harness-app/tags/latest/)
-                      if [ "$STATUS2" = "200" ]; then
-                        echo "✅ Image tag latest EXISTS on Docker Hub!"
-                      else
-                        echo "⚠️ latest tag not found (status: $STATUS2)"
                       fi
                       echo ""
                       echo "View: https://hub.docker.com/r/<+variable.docker_username>/go-harness-app"
                       echo "=== Verification Done! ==="
 
-              # Step 9: Check Docker image size
-              - step:
-                  type: Run
-                  name: Image Size Check
-                  identifier: image_size_check
-                  spec:
-                    shell: Sh
-                    image: alpine:latest
-                    command: |-
-                      echo "=== Step 8: Docker Image Size Check ==="
-                      apk add --no-cache curl python3 > /dev/null 2>&1
-                      TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username":"<+variable.docker_username>","password":"<+secrets.getValue("docker-hub-password")>"}' https://hub.docker.com/v2/users/login/ | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
-                      SIZE=$(curl -s -H "Authorization: JWT $TOKEN" https://hub.docker.com/v2/repositories/<+variable.docker_username>/go-harness-app/tags/<+pipeline.sequenceId>/ | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('full_size',0))" 2>/dev/null || echo "0")
-                      SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc 2>/dev/null || echo "unknown")
-                      echo "Image size: ${SIZE_MB} MB"
-                      echo ""
-                      echo "Multi-stage Dockerfile keeps image SMALL:"
-                      echo "  Go source + compiler = ~500 MB"
-                      echo "  Final image (alpine + binary) = ~15-20 MB"
-                      echo "=== Size Check Done! ==="
-
-              # Step 10: Update rollback data (mark this build as successful)
-              - step:
-                  type: Run
-                  name: Update Rollback Data
-                  identifier: update_rollback
-                  spec:
-                    shell: Sh
-                    image: alpine:latest
-                    command: |-
-                      echo "=== Step 9: Updating Rollback Data ==="
-                      mkdir -p /tmp/harness
-                      echo "<+pipeline.sequenceId>" > /tmp/harness/last-successful-tag.txt
-                      echo "Marked build <+pipeline.sequenceId> as last successful"
-                      echo "If next build fails, we rollback to this tag"
-                      echo "=== Updated! ==="
-
-              # Step 11: Final success message
+              # Step 8: Pipeline Complete
               - step:
                   type: Run
                   name: Pipeline Complete
@@ -265,66 +175,13 @@ pipeline:
                       echo "========================================="
                       echo "  PIPELINE COMPLETE!"
                       echo ""
-                      echo "  Image: <+variable.docker_username>/go-harness-app:<+pipeline.sequenceId>"
-                      echo "  Image: <+variable.docker_username>/go-harness-app:latest"
-                      echo "  View: https://hub.docker.com/r/<+variable.docker_username>/go-harness-app"
+                      echo "  Step 1: Tests passed ✅"
+                      echo "  Step 2: Lint check ✅"
+                      echo "  Step 3: Coverage report ✅"
+                      echo "  Step 4: Binary built ✅"
+                      echo "  Step 5: App verified ✅"
+                      echo "  Step 6: Docker image pushed ✅"
+                      echo "  Step 7: Push verified ✅"
                       echo ""
-                      echo "  Rollback tag saved: <+pipeline.sequenceId>"
-                      echo "  If next build fails → auto rollback to this version"
+                      echo "  Image: <+variable.docker_username>/go-harness-app:<+pipeline.sequenceId>"
                       echo "========================================="
-
-        # ==========================================
-        # FAILURE STRATEGY: AUTOMATIC ROLLBACK
-        # If ANY step fails, this runs automatically
-        # ==========================================
-        failureStrategies:
-          - onFailure:
-              errors:
-                - AllErrors
-              action:
-                type: StageRollback
-
-        # These steps run ONLY when pipeline FAILS
-        rollbackSteps:
-          - step:
-              type: Run
-              name: Automatic Rollback
-              identifier: auto_rollback
-              spec:
-                shell: Sh
-                image: alpine:latest
-                command: |-
-                  echo "========================================="
-                  echo "  ⚠️ PIPELINE FAILED — ROLLING BACK!"
-                  echo "========================================="
-                  echo ""
-                  apk add --no-cache curl python3 > /dev/null 2>&1
-                  mkdir -p /tmp/harness
-                  PREV_TAG="none"
-                  if [ -f /tmp/harness/last-successful-tag.txt ]; then
-                    PREV_TAG=$(cat /tmp/harness/last-successful-tag.txt)
-                  fi
-                  echo "Previous successful tag: $PREV_TAG"
-                  echo "Failed build tag: <+pipeline.sequenceId>"
-                  echo ""
-                  echo "--- Deleting failed image tag <+pipeline.sequenceId> from Docker Hub ---"
-                  TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username":"<+variable.docker_username>","password":"<+secrets.getValue("docker-hub-password")>"}' https://hub.docker.com/v2/users/login/ | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null) || true
-                  if [ -n "$TOKEN" ]; then
-                    curl -s -X DELETE -H "Authorization: JWT $TOKEN" https://hub.docker.com/v2/repositories/<+variable.docker_username>/go-harness-app/tags/<+pipeline.sequenceId>/ || true
-                    echo "Failed tag <+pipeline.sequenceId> deleted (if it was pushed)"
-                    echo ""
-                    if [ "$PREV_TAG" != "none" ]; then
-                      echo "--- Restoring 'latest' tag to previous version: $PREV_TAG ---"
-                      echo "Previous image $PREV_TAG is still on Docker Hub as the stable version"
-                      echo "latest tag still points to: $PREV_TAG"
-                    fi
-                  else
-                    echo "Could not login to Docker Hub (image may not have been pushed yet)"
-                  fi
-                  echo ""
-                  echo "========================================="
-                  echo "  ROLLBACK COMPLETE!"
-                  echo "  Failed tag: <+pipeline.sequenceId> (deleted)"
-                  echo "  Stable tag: $PREV_TAG (still available)"
-                  echo "  'latest' points to: $PREV_TAG"
-                  echo "========================================="
