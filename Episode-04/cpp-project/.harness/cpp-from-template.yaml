@@ -1,0 +1,63 @@
+pipeline:
+  name: cpp-from-template
+  identifier: cppfromtemplate
+  tags: {}
+  template:
+    templateRef: enterprise_ci_pipeline_template
+    versionLabel: 1.0.0
+    templateInputs:
+      variables:
+        - name: deploy_version
+          type: String
+          value: <+input>
+        - name: environment
+          type: String
+          value: <+input>.allowedValues(development,testing,staging,production)
+        - name: app_name
+          type: String
+          value: <+input>
+        - name: dockerfile_path
+          type: String
+          value: <+input>
+        - name: build_context
+          type: String
+          value: <+input>
+        - name: build_command
+          type: String
+          value: <+input>
+        - name: test_command
+          type: String
+          value: <+input>
+      properties:
+        ci:
+          codebase:
+            connectorRef: <+input>
+            repoName: <+input>
+            build: <+input>
+      stages:
+        - stage:
+            identifier: build_and_push
+            type: CI
+            spec:
+              execution:
+                steps:
+                  - step:
+                      identifier: push_dockerhub
+                      type: BuildAndPushDockerRegistry
+                      spec:
+                        connectorRef: <+input>
+        - stage:
+            identifier: push_to_ecr
+            type: CI
+            spec:
+              execution:
+                steps:
+                  - step:
+                      identifier: push_ecr
+                      type: BuildAndPushECR
+                      spec:
+                        connectorRef: <+input>
+                        region: <+input>
+                        account: <+input>
+  projectIdentifier: HarnessCICDZerotoHero
+  orgIdentifier: default
