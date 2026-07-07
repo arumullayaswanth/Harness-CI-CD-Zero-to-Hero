@@ -51,6 +51,40 @@ Stage 3 & 4 (Parallel): Delete Docker Hub + Delete ECR
 2. Choose: "Start with Template"
 3. Select: "Enterprise CI Pipeline Template"
 4. Fill in the inputs (see below)
+5. Click Run → Fill all fields → Run Pipeline
+
+**Fill these when running:**
+
+```
+Pipeline Variables:
+─────────────────
+  deploy_version:   1.0.0
+  environment:      development (or testing/staging/production)
+  app_name:         cpp-harness-app
+  dockerfile_path:  Episode-04/cpp-project/Dockerfile
+  build_context:    Episode-04/cpp-project
+  build_command:    cd Episode-04/cpp-project && mkdir -p build && cd build && cmake .. && make app
+  test_command:     cd Episode-04/cpp-project && mkdir -p build && cd build && cmake .. && make tests && ./tests
+
+CI Codebase:
+────────────
+  Connector:        Github 
+  Repository Name:  Harness-CI-CD-Zero-to-Hero
+  Build Type:       Git Branch
+  Branch Name:      master
+
+Stage: build-and-push:
+──────────────────────
+  Step: Push to Docker Hub
+    Docker Connector: dockerhub 
+
+Stage: push-to-ecr:
+────────────────────
+  Step: Push to ECR
+    AWS Connector:  aws_account 
+    Region:         us-east-1
+    Account Id:     713939171080 (your AWS account ID)
+```
 
 ---
 
