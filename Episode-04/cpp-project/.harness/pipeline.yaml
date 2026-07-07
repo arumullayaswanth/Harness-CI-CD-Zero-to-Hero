@@ -1,0 +1,161 @@
+# ============================================
+# PIPELINE: C++ Enterprise CI Pipeline (Episode 4)
+# ============================================
+# Flow: Clone → Install Deps → Unit Test → Build → Docker Build → Push Docker Hub → Push ECR
+#
+# CHANGE THESE:
+#   - projectIdentifier
+#   - orgIdentifier
+#   - connectorRef (GitHub, Docker Hub, AWS)
+# ============================================
+pipeline:
+  name: cpp-enterprise-ci-pipeline
+  identifier: cpp_enterprise_ci_pipeline
+  # CHANGE THIS: Your project ID
+  projectIdentifier: HarnessCICDZerotoHero
+  # CHANGE THIS: Your org
+  orgIdentifier: default
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        # CHANGE THIS: Your GitHub connector
+        connectorRef: account.Github
+        repoName: Harness-CI-CD-Zero-to-Hero
+        build: <+input>
+  # Runtime Inputs: user selects version and environment when running
+  variables:
+    - name: deploy_version
+      type: String
+      description: "Enter deploy version (e.g. 1.0.0, 2.1.3)"
+      value: <+input>
+    - name: environment
+      type: String
+      description: "Select environment"
+      value: <+input>.allowedValues(development,testing,staging,production)
+  stages:
+    - stage:
+        name: build-cpp
+        identifier: build_cpp
+        description: "Enterprise CI Pipeline for C++ App"
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              # Step 1: Install Dependencies
+              - step:
+                  type: Run
+                  name: Install Dependencies
+                  identifier: install_deps
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "=== Step 1: Installing Dependencies ==="
+                      apt-get update -qq
+                      apt-get install -y -qq cmake g++ make
+                      echo "CMake version: $(cmake --version | head -1)"
+                      echo "GCC version: $(g++ --version | head -1)"
+                      echo "=== Dependencies Installed! ==="
+
+              # Step 2: Unit Tests
+              - step:
+                  type: Run
+                  name: Unit Tests
+                  identifier: unit_tests
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "=== Step 2: Running Unit Tests ==="
+                      cd Episode-04/cpp-project
+                      mkdir -p build && cd build
+                      cmake ..
+                      make tests
+                      ./tests
+                      echo "=== All Tests Passed! ==="
+
+              # Step 3: Build Application
+              - step:
+                  type: Run
+                  name: Build Application
+                  identifier: build_app
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "=== Step 3: Building C++ Application ==="
+                      cd Episode-04/cpp-project
+                      mkdir -p build && cd build
+                      cmake ..
+                      make app
+                      echo "Binary size:"
+                      ls -lh app
+                      echo "=== Build Successful! ==="
+
+              # Step 4: Build and Push to Docker Hub
+              - step:
+                  type: BuildAndPushDockerRegistry
+                  name: Push to Docker Hub
+                  identifier: push_dockerhub
+                  spec:
+                    # CHANGE THIS: Your Docker Hub connector
+                    connectorRef: dockerhub
+                    repo: <+variable.docker_username>/cpp-harness-app
+                    tags:
+                      - <+pipeline.variables.deploy_version>-<+pipeline.variables.environment>
+                      - <+pipeline.sequenceId>
+                      - latest
+                    dockerfile: Episode-04/cpp-project/Dockerfile
+                    context: Episode-04/cpp-project
+
+              # Step 5: Build and Push to Amazon ECR
+              - step:
+                  type: BuildAndPushECR
+                  name: Push to ECR
+                  identifier: push_ecr
+                  spec:
+                    # CHANGE THIS: Your AWS connector (OIDC)
+                    connectorRef: aws_account
+                    region: us-east-1
+                    account: <+variable.aws_account_id>
+                    imageName: cpp-harness-app
+                    tags:
+                      - <+pipeline.variables.deploy_version>-<+pipeline.variables.environment>
+                      - <+pipeline.sequenceId>
+                      - latest
+                    dockerfile: Episode-04/cpp-project/Dockerfile
+                    context: Episode-04/cpp-project
+
+              # Step 6: Verify Images
+              - step:
+                  type: Run
+                  name: Verify Images
+                  identifier: verify_images
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "========================================="
+                      echo "  ENTERPRISE CI PIPELINE COMPLETE!"
+                      echo ""
+                      echo "  Version: <+pipeline.variables.deploy_version>"
+                      echo "  Environment: <+pipeline.variables.environment>"
+                      echo ""
+                      echo "  Step 1: Dependencies installed ✅"
+                      echo "  Step 2: Unit tests passed ✅"
+                      echo "  Step 3: C++ binary built ✅"
+                      echo "  Step 4: Docker Hub pushed ✅"
+                      echo "  Step 5: Amazon ECR pushed ✅"
+                      echo ""
+                      echo "  Docker Hub: <+variable.docker_username>/cpp-harness-app:<+pipeline.variables.deploy_version>-<+pipeline.variables.environment>"
+                      echo "  ECR: <+variable.aws_account_id>.dkr.ecr.us-east-1.amazonaws.com/cpp-harness-app:<+pipeline.variables.deploy_version>-<+pipeline.variables.environment>"
+                      echo ""
+                      echo "  All Tags:"
+                      echo "    - <+pipeline.variables.deploy_version>-<+pipeline.variables.environment>"
+                      echo "    - <+pipeline.sequenceId>"
+                      echo "    - latest"
+                      echo "========================================="
