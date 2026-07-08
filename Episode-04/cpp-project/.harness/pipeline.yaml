@@ -20,6 +20,8 @@ pipeline:
     ci:
       codebase:
         # CHANGE THIS: Your GitHub connector
+        # This connector is at ACCOUNT level (Account Settings → Connectors)
+        # We created this in Episode 1
         connectorRef: account.Github
         repoName: Harness-CI-CD-Zero-to-Hero
         build: <+input>
@@ -104,6 +106,8 @@ pipeline:
                   identifier: push_dockerhub
                   spec:
                     # CHANGE THIS: Your Docker Hub connector
+                    # This connector is at PROJECT level (Project Settings → Connectors)
+                    # We created this in Episode 2
                     connectorRef: dockerhub
                     repo: <+variable.docker_username>/cpp-harness-app
                     tags:
@@ -154,8 +158,12 @@ pipeline:
                   identifier: push_ecr
                   spec:
                     # CHANGE THIS: Your AWS connector (OIDC)
+                    # This connector is at ACCOUNT level (Account Settings → Connectors)
+                    # We created this in Episode 3 using OIDC authentication
                     connectorRef: account.aws_account
                     region: us-east-1
+                    # This variable is at PROJECT level (Project Settings → Variables)
+                    # We created this in Episode 4: aws_account_id = 713939171080
                     account: <+variable.aws_account_id>
                     imageName: cpp-harness-app
                     tags:
@@ -174,6 +182,8 @@ pipeline:
                     shell: Sh
                     image: amazon/aws-cli:latest
                     envVariables:
+                      # These secrets are at PROJECT level (Project Settings → Secrets)
+                      # We created these in Episode 3
                       AWS_ACCESS_KEY_ID: <+secrets.getValue("aws_access_key_id")>
                       AWS_SECRET_ACCESS_KEY: <+secrets.getValue("aws_secret_access_key")>
                       AWS_DEFAULT_REGION: us-east-1
@@ -253,6 +263,8 @@ pipeline:
                         shell: Sh
                         command: |-
                           echo "=== Deleting Docker Hub Repository ==="
+                          # docker_username = PROJECT variable (Project Settings → Variables) - created in Episode 2
+                          # docker-hub-password = PROJECT secret (Project Settings → Secrets) - created in Episode 2
                           TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username":"<+variable.docker_username>","password":"<+secrets.getValue("docker-hub-password")>"}' https://hub.docker.com/v2/users/login/ | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
                           echo "Deleting: <+variable.docker_username>/cpp-harness-app"
                           curl -s -X DELETE -H "Authorization: JWT $TOKEN" https://hub.docker.com/v2/repositories/<+variable.docker_username>/cpp-harness-app/
@@ -302,6 +314,8 @@ pipeline:
                         shell: Sh
                         image: amazon/aws-cli:latest
                         envVariables:
+                          # These secrets are at PROJECT level (Project Settings → Secrets)
+                          # We created these in Episode 4
                           AWS_ACCESS_KEY_ID: <+secrets.getValue("aws_access_key_id")>
                           AWS_SECRET_ACCESS_KEY: <+secrets.getValue("aws_secret_access_key")>
                           AWS_DEFAULT_REGION: us-east-1
