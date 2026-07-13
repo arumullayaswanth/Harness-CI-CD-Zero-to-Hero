@@ -8,7 +8,7 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 COPY src/ src/
 
 # Stage 2: Production (non-root, minimal)
