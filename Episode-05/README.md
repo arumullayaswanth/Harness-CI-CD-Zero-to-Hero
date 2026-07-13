@@ -30,31 +30,39 @@ Build 3: Load from cache (10 seconds) ✅
 Saved: 60+ hours per year!
 ```
 
----
+**Cache Keys by Language:**
+
+| Language | Cache Key | What's Cached |
+|----------|-----------|---------------|
+| Maven | `maven-{{ checksum "pom.xml" }}` | `/root/.m2/repository` |
+| npm | `npm-{{ checksum "package-lock.json" }}` | `node_modules` |
+| Gradle | `gradle-{{ checksum "build.gradle" }}` | `/root/.gradle/caches` |
+| Go | `go-{{ checksum "go.sum" }}` | `/root/go/pkg/mod` |
+| Python | `pip-{{ checksum "requirements.txt" }}` | `/root/.cache/pip` |
 
 #### Maven Cache
-
 ```yaml
+caching:
+  enabled: true
+  paths:
+    - /root/.m2/repository
+# OR use S3 cache:
 - step:
     type: RestoreCacheS3
     name: Restore Maven Cache
-    identifier: restore_cache
     spec:
-      connectorRef: aws_connector
+      connectorRef: account.aws_account
       region: us-east-1
       bucket: my-build-cache
       key: maven-{{ checksum "pom.xml" }}
       archiveFormat: Tar
       failIfKeyNotFound: false
-
-# ... your build steps ...
-
+# After build:
 - step:
     type: SaveCacheS3
     name: Save Maven Cache
-    identifier: save_cache
     spec:
-      connectorRef: aws_connector
+      connectorRef: account.aws_account
       region: us-east-1
       bucket: my-build-cache
       key: maven-{{ checksum "pom.xml" }}
@@ -64,35 +72,54 @@ Saved: 60+ hours per year!
 ```
 
 #### npm Cache
-
 ```yaml
-key: npm-{{ checksum "package-lock.json" }}
-sourcePaths:
-  - node_modules
+caching:
+  enabled: true
+  paths:
+    - node_modules
+# OR S3:
+# key: npm-{{ checksum "package-lock.json" }}
+# sourcePaths: [node_modules]
 ```
 
 #### Gradle Cache
-
 ```yaml
-key: gradle-{{ checksum "build.gradle" }}
-sourcePaths:
-  - /root/.gradle/caches
+caching:
+  enabled: true
+  paths:
+    - /root/.gradle/caches
+    - /root/.gradle/wrapper
+# key: gradle-{{ checksum "build.gradle" }}
 ```
 
 #### Go Cache
-
 ```yaml
-key: go-{{ checksum "go.sum" }}
-sourcePaths:
-  - /root/go/pkg/mod
+caching:
+  enabled: true
+  paths:
+    - /root/go/pkg/mod
+    - /root/.cache/go-build
+# key: go-{{ checksum "go.sum" }}
 ```
 
 #### Python Cache
-
 ```yaml
-key: pip-{{ checksum "requirements.txt" }}
-sourcePaths:
-  - /root/.cache/pip
+caching:
+  enabled: true
+  paths:
+    - /root/.cache/pip
+    - .venv
+# key: pip-{{ checksum "requirements.txt" }}
+```
+
+#### Rust Cache
+```yaml
+caching:
+  enabled: true
+  paths:
+    - /root/.cargo/registry
+    - target
+# key: rust-{{ checksum "Cargo.lock" }}
 ```
 
 ---
@@ -121,29 +148,96 @@ Solution: Matrix Build = Test ALL versions in parallel!
 └───────────────────────────────────────────────┘
 ```
 
-**Pipeline YAML:**
+#### Java Matrix (Multiple JDK Versions)
 ```yaml
-- stage:
-    name: Build and Test
-    identifier: build_test
-    type: CI
+- step:
+    type: Run
+    name: Test
+    identifier: test
     spec:
-      execution:
-        steps:
-          - step:
-              type: Run
-              name: Test
-              identifier: test
-              spec:
-                image: maven:<+matrix.mavenVersion>
-                command: mvn test
-              strategy:
-                matrix:
-                  mavenVersion:
-                    - "3.8-eclipse-temurin-11"
-                    - "3.9-eclipse-temurin-17"
-                    - "3.9-eclipse-temurin-21"
-                  maxConcurrency: 3
+      image: maven:<+matrix.mavenVersion>
+      command: mvn test
+    strategy:
+      matrix:
+        mavenVersion:
+          - "3.8-eclipse-temurin-11"
+          - "3.9-eclipse-temurin-17"
+          - "3.9-eclipse-temurin-21"
+        maxConcurrency: 3
+```
+
+#### Node.js Matrix (Multiple Node Versions)
+```yaml
+- step:
+    type: Run
+    name: Test Node
+    identifier: test_node
+    spec:
+      image: node:<+matrix.nodeVersion>
+      command: npm ci && npm test
+    strategy:
+      matrix:
+        nodeVersion:
+          - "18-alpine"
+          - "20-alpine"
+          - "22-alpine"
+        maxConcurrency: 3
+```
+
+#### Python Matrix (Multiple Python Versions)
+```yaml
+- step:
+    type: Run
+    name: Test Python
+    identifier: test_python
+    spec:
+      image: python:<+matrix.pythonVersion>
+      command: pip install -r requirements.txt && pytest
+    strategy:
+      matrix:
+        pythonVersion:
+          - "3.10-slim"
+          - "3.11-slim"
+          - "3.12-slim"
+        maxConcurrency: 3
+```
+
+#### Go Matrix (Multiple Go Versions)
+```yaml
+- step:
+    type: Run
+    name: Test Go
+    identifier: test_go
+    spec:
+      image: golang:<+matrix.goVersion>
+      command: go test ./...
+    strategy:
+      matrix:
+        goVersion:
+          - "1.21"
+          - "1.22"
+          - "1.23"
+        maxConcurrency: 3
+```
+
+#### Multi-Dimension Matrix (Version + OS)
+```yaml
+- step:
+    type: Run
+    name: Cross-Platform Test
+    identifier: cross_test
+    spec:
+      command: npm test
+    strategy:
+      matrix:
+        nodeVersion:
+          - "18"
+          - "20"
+        os:
+          - "linux"
+          - "windows"
+        maxConcurrency: 4
+        # Runs: 18-linux, 18-windows, 20-linux, 20-windows (4 parallel)
 ```
 
 ---
@@ -160,87 +254,79 @@ Step 2 (2 min) ─┼─ = 2 minutes total!
 Step 3 (2 min) ─┘
 ```
 
-**Pipeline YAML for Parallel Steps:**
-```yaml
-execution:
-  steps:
-    - parallel:
-        - step:
-            type: Run
-            name: Unit Tests
-            identifier: unit_tests
-            spec:
-              command: mvn test -pl module1
-        - step:
-            type: Run
-            name: Integration Tests
-            identifier: integration_tests
-            spec:
-              command: mvn test -pl module2
-        - step:
-            type: Run
-            name: Lint Check
-            identifier: lint
-            spec:
-              command: mvn checkstyle:check
-```
-
 ---
 
 ### 4. Triggers
 
+| Trigger Type | When It Runs | Use Case |
+|-------------|--------------|----------|
+| Git Push | Code pushed to master | Every commit gets tested |
+| Pull Request | PR opened/updated | Review before merge |
+| Cron | Scheduled (e.g. daily 2 AM) | Nightly security scans |
+| Webhook | External event | Third-party integrations |
+
 #### Git Push Trigger
 ```yaml
-# Runs pipeline when code is pushed to main
 trigger:
-  name: On Push to Main
-  identifier: push_main
+  name: On Push to Master
+  identifier: on_push_master
   type: Webhook
   spec:
     type: Github
     spec:
       type: Push
       spec:
-        connectorRef: github_connector
-        repoName: harness-cicd-sample-app
-        actions: []
+        connectorRef: account.Github
+        repoName: Harness-CI-CD-Zero-to-Hero
+        autoAbortPreviousExecutions: true
       payloadConditions:
         - key: targetBranch
           operator: Equals
-          value: main
+          value: master
 ```
 
 #### Pull Request Trigger
 ```yaml
-# Runs pipeline when PR is opened
 trigger:
   name: On Pull Request
-  identifier: on_pr
+  identifier: on_pull_request
   type: Webhook
   spec:
     type: Github
     spec:
       type: PullRequest
       spec:
-        connectorRef: github_connector
-        repoName: harness-cicd-sample-app
+        connectorRef: account.Github
+        repoName: Harness-CI-CD-Zero-to-Hero
+        autoAbortPreviousExecutions: true
         actions:
           - Open
+          - Reopen
           - Synchronize
+      payloadConditions:
+        - key: targetBranch
+          operator: Equals
+          value: master
 ```
 
-#### Cron Trigger (Scheduled)
+#### Cron Trigger (Scheduled — Daily Security Scan)
 ```yaml
-# Runs every night at midnight
 trigger:
-  name: Nightly Build
-  identifier: nightly
+  name: Daily Security Scan
+  identifier: daily_security_scan
   type: Scheduled
   spec:
     type: Cron
     spec:
-      expression: "0 0 * * *"
+      expression: "0 2 * * *"
 ```
+
+#### How to Create in Harness UI:
+1. Go to: Pipelines → devsecops-pipeline → **Triggers** tab
+2. Click **+ New Trigger**
+3. Choose type (Webhook or Scheduled)
+4. Configure conditions (branch, actions, cron expression)
+5. Save ✅
 
 ---
 
@@ -255,308 +341,202 @@ Traditional:
 DevSecOps:
   Code → Security Scan → Build → Security Scan → Deploy
          ↑ Find issues EARLY = Cheaper to fix!
-
-┌─────────────────────────────────────────────────┐
-│  SECURITY TOOLS WE USE:                          │
-│                                                   │
-│  1. SonarQube  → Code quality & bugs            │
-│  2. Gitleaks   → Secrets accidentally in code   │
-│  3. Trivy      → Vulnerabilities in Docker image│
-│  4. OWASP      → Vulnerable dependencies        │
-└─────────────────────────────────────────────────┘
 ```
 
----
+#### 4 Security Tools We Use:
 
-#### Trivy (Container Image Scanner)
-
-```
-What Trivy Does:
-  Scans your Docker image for known vulnerabilities (CVEs)
-
-Example finding:
-  ⚠️ CRITICAL: log4j-2.14.0 has Remote Code Execution vulnerability
-  Fix: Upgrade to log4j-2.17.1
-```
-
-**Pipeline Step:**
-```yaml
-- step:
-    type: AquaTrivy
-    name: Trivy Scan
-    identifier: trivy_scan
-    spec:
-      mode: orchestration
-      config: default
-      target:
-        type: container
-        detection: auto
-      advanced:
-        log:
-          level: info
-      privileged: true
-      image:
-        type: docker_v2
-        name: <+pipeline.variables.docker_repo>
-        tag: <+pipeline.sequenceId>
-      sbom:
-        format: spdx-json
-```
-
----
-
-#### SonarQube (Code Quality)
-
-```
-What SonarQube Does:
-  - Finds bugs in your code
-  - Finds security vulnerabilities
-  - Checks code style
-  - Measures test coverage
-  - Gives a quality "grade"
-
-Example findings:
-  🐛 BUG: Null pointer possible on line 42
-  🔒 SECURITY: SQL injection risk on line 88
-  💩 CODE SMELL: Method too long (200 lines)
-```
-
-**Pipeline Step:**
-```yaml
-- step:
-    type: Run
-    name: SonarQube Scan
-    identifier: sonarqube
-    spec:
-      connectorRef: dockerhub_connector
-      image: sonarsource/sonar-scanner-cli:latest
-      shell: Sh
-      command: |
-        sonar-scanner \
-          -Dsonar.projectKey=harness-course-app \
-          -Dsonar.sources=src/main \
-          -Dsonar.tests=src/test \
-          -Dsonar.host.url=<+variable.sonarqube_url> \
-          -Dsonar.login=<+secrets.getValue("sonarqube_token")> \
-          -Dsonar.java.binaries=target/classes
-      envVariables:
-        SONAR_HOST_URL: <+variable.sonarqube_url>
-```
-
----
-
-#### Gitleaks (Secret Detection)
-
-```
-What Gitleaks Does:
-  Finds passwords/keys accidentally committed to Git
-
-Example findings:
-  🔑 LEAK: AWS Access Key found in config.py line 15
-  🔑 LEAK: Database password found in .env line 3
-  🔑 LEAK: API token found in README.md line 22
-```
-
-**Pipeline Step:**
-```yaml
-- step:
-    type: Run
-    name: Gitleaks Secret Scan
-    identifier: gitleaks
-    spec:
-      connectorRef: dockerhub_connector
-      image: zricethezav/gitleaks:latest
-      shell: Sh
-      command: |
-        echo "=== Scanning for secrets ==="
-        gitleaks detect --source=. --report-format=json --report-path=gitleaks-report.json
-        echo "=== No secrets found! ==="
-```
-
----
-
-#### OWASP Dependency Check
-
-```
-What OWASP Does:
-  Checks if your libraries/dependencies have known vulnerabilities
-
-Example findings:
-  ⚠️ HIGH: spring-core-5.3.0 has CVE-2022-22965 (Spring4Shell)
-  ⚠️ MEDIUM: jackson-databind-2.11.0 has deserialization issue
-  Fix: Update your pom.xml to newer versions
-```
-
-**Pipeline Step:**
-```yaml
-- step:
-    type: Run
-    name: OWASP Dependency Check
-    identifier: owasp
-    spec:
-      connectorRef: dockerhub_connector
-      image: owasp/dependency-check:latest
-      shell: Sh
-      command: |
-        /usr/share/dependency-check/bin/dependency-check.sh \
-          --scan . \
-          --format HTML \
-          --format JSON \
-          --out /harness/dependency-check-report \
-          --project "harness-course-app"
-```
-
----
-
-## 🖥️ Complete Secure CI Pipeline
-
-```yaml
-# .harness/secure-ci-pipeline.yaml
-pipeline:
-  name: Secure CI Pipeline
-  identifier: secure_ci_pipeline
-  projectIdentifier: harness_course
-  orgIdentifier: learning
-
-  properties:
-    ci:
-      codebase:
-        connectorRef: github_connector
-        repoName: harness-cicd-sample-app
-        build: <+input>
-
-  stages:
-    - stage:
-        name: Build Test and Scan
-        identifier: build_test_scan
-        type: CI
-        spec:
-          cloneCodebase: true
-          infrastructure:
-            type: KubernetesDirect
-            spec:
-              connectorRef: k8s_connector
-              namespace: harness-builds
-          caching:
-            enabled: true
-            paths:
-              - /root/.m2/repository
-          execution:
-            steps:
-              # Secret Detection FIRST
-              - step:
-                  type: Run
-                  name: Gitleaks Scan
-                  identifier: gitleaks
-                  spec:
-                    image: zricethezav/gitleaks:latest
-                    command: |
-                      gitleaks detect --source=. -v
-                      echo "No secrets found ✅"
-
-              # Run tests
-              - step:
-                  type: Run
-                  name: Unit Tests
-                  identifier: tests
-                  spec:
-                    image: maven:3.9-eclipse-temurin-17
-                    command: mvn test
-
-              # SonarQube + OWASP in parallel
-              - parallel:
-                  - step:
-                      type: Run
-                      name: SonarQube Scan
-                      identifier: sonar
-                      spec:
-                        image: sonarsource/sonar-scanner-cli:latest
-                        command: |
-                          sonar-scanner \
-                            -Dsonar.projectKey=harness-course \
-                            -Dsonar.sources=src/main \
-                            -Dsonar.host.url=$SONAR_URL \
-                            -Dsonar.login=$SONAR_TOKEN
-                        envVariables:
-                          SONAR_URL: <+variable.sonarqube_url>
-                          SONAR_TOKEN: <+secrets.getValue("sonarqube_token")>
-                  - step:
-                      type: Run
-                      name: OWASP Check
-                      identifier: owasp
-                      spec:
-                        image: owasp/dependency-check:latest
-                        command: |
-                          /usr/share/dependency-check/bin/dependency-check.sh \
-                            --scan . --format JSON --out ./reports
-
-              # Build and Push Docker Image
-              - step:
-                  type: BuildAndPushDockerRegistry
-                  name: Build and Push
-                  identifier: docker_push
-                  spec:
-                    connectorRef: dockerhub_connector
-                    repo: <+pipeline.variables.docker_repo>
-                    tags:
-                      - <+pipeline.sequenceId>
-                      - latest
-
-              # Scan the Docker Image
-              - step:
-                  type: AquaTrivy
-                  name: Trivy Image Scan
-                  identifier: trivy
-                  spec:
-                    mode: orchestration
-                    config: default
-                    target:
-                      type: container
-                      detection: auto
-                    privileged: true
-                    image:
-                      type: docker_v2
-                      name: <+pipeline.variables.docker_repo>
-                      tag: <+pipeline.sequenceId>
-
-  variables:
-    - name: docker_repo
-      type: String
-      value: "yourusername/harness-course-app"
-```
+| Tool | What It Scans | Example Finding |
+|------|---------------|-----------------|
+| **Gitleaks** | Secrets in code | 🔑 AWS Access Key found in config.py line 15 |
+| **SonarQube** | Code quality & bugs | 🐛 Null pointer on line 42, SQL injection on line 88 |
+| **Trivy** | Docker image CVEs | ⚠️ CRITICAL: log4j-2.14.0 has Remote Code Execution |
+| **OWASP** | Dependency vulnerabilities | ⚠️ HIGH: spring-core-5.3.0 has CVE-2022-22965 |
 
 ---
 
 ### Pipeline Flow Visualization
 
 ```
-┌──────────────────────────────────────────────────┐
-│  SECURE CI PIPELINE                               │
-│                                                    │
-│  ┌──────────────┐                                 │
-│  │ Gitleaks     │  ← Find secrets in code         │
-│  └──────┬───────┘                                 │
-│         ▼                                          │
-│  ┌──────────────┐                                 │
-│  │ Unit Tests   │  ← Make sure code works         │
-│  └──────┬───────┘                                 │
-│         ▼                                          │
-│  ┌──────────────┐  ┌──────────────┐              │
-│  │ SonarQube   │  │ OWASP Check  │  ← PARALLEL  │
-│  │ (code bugs) │  │ (bad deps)   │              │
-│  └──────┬───────┘  └──────┬───────┘              │
-│         └─────────┬────────┘                      │
-│                   ▼                                │
-│  ┌──────────────────────┐                         │
-│  │ Docker Build & Push  │  ← Create image         │
-│  └──────────┬───────────┘                         │
-│             ▼                                      │
-│  ┌──────────────┐                                 │
-│  │ Trivy Scan   │  ← Scan image for vulns        │
-│  └──────────────┘                                 │
-│                                                    │
-│  Result: Secure, tested, production-ready image!  │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  DEVSECOPS PIPELINE (5 Stages)                                │
+│                                                                │
+│  STAGE 1: Build & Test                                        │
+│  ┌──────────────────┐                                         │
+│  │ npm ci (cached)  │                                         │
+│  └────────┬─────────┘                                         │
+│           ▼                                                    │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌───────────┐ │
+│  │ Lint Check │ │ Unit Tests │ │ Gitleaks   │ │ SonarQube │ │
+│  │            │ │ + Coverage │ │ (secrets)  │ │ (quality) │ │
+│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └─────┬─────┘ │
+│        └───────────────┼──────────────┼───────────────┘       │
+│                        ▼ PARALLEL                              │
+│                                                                │
+│  STAGE 2: Security Scanning                                   │
+│  ┌──────────────────┐                                         │
+│  │ Docker Build     │                                         │
+│  └────────┬─────────┘                                         │
+│           ▼                                                    │
+│  ┌─────────────────┐  ┌─────────────────────┐                │
+│  │ Trivy           │  │ OWASP/npm audit     │                │
+│  │ (image CVEs) 🐳 │  │ (dependencies) 📦   │                │
+│  └────────┬────────┘  └────────┬────────────┘                │
+│           └────────┬───────────┘                              │
+│                    ▼ PARALLEL                                  │
+│  ┌──────────────────┐                                         │
+│  │ Security Summary │                                         │
+│  └────────┬─────────┘                                         │
+│           ▼                                                    │
+│  STAGE 3: Push to ECR                                         │
+│  ┌──────────────────┐                                         │
+│  │ Create ECR Repo  │                                         │
+│  └────────┬─────────┘                                         │
+│           ▼                                                    │
+│  ┌──────────────────┐                                         │
+│  │ Push to ECR 🚀   │  (OIDC connector)                      │
+│  └────────┬─────────┘                                         │
+│           ▼                                                    │
+│  STAGE 4: Approval ⏸️                                         │
+│  ┌──────────────────────────────────────────┐                 │
+│  │ "Delete images?" → APPROVE / REJECT      │                 │
+│  └────────┬─────────────────────────────────┘                 │
+│           ▼ (only if approved)                                 │
+│                                                                │
+│  STAGE 5: Cleanup                                             │
+│  ┌──────────────────┐                                         │
+│  │ Delete ECR Repo  │                                         │
+│  └──────────────────┘                                         │
+│                                                                │
+│  Result: Secure, tested, scanned image on ECR! 🛡️🚀          │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🚀 Deployment Steps (How to Run This Pipeline)
+
+### Prerequisites (already done in previous episodes)
+
+| What | Where | Episode | Link |
+|------|-------|---------|------|
+| GitHub connector | Account Settings → Connectors | Episode 1 | [Episode 1 — Deploy Steps](../Episode-01/hello-world-app/DEPLOY-STEPS.md) |
+| AWS connector (OIDC) | Account Settings → Connectors | Episode 3 | [Episode 3 — Connector Setup](../Episode-03/README.md#connector-3-aws--🆕-create-now) |
+| aws_access_key_id secret | Project Settings → Secrets | Episode 3 | [Episode 3 — Terraform README](../Episode-03/terraform-project/README.md#step-2-get-aws-access-key--secret-key) |
+| aws_secret_access_key secret | Project Settings → Secrets | Episode 3 | [Episode 3 — Terraform README](../Episode-03/terraform-project/README.md#step-3-add-secrets-in-harness) |
+| aws_account_id variable | Project Settings → Variables | Episode 4 | [Episode 4 — Deployment Steps](../Episode-04/README.md#step-1-add-aws-account-id-variable) |
+
+### New Setup for Episode 5
+
+1. **Create SonarQube secret** (optional):
+   - Project Settings → Secrets → + New Secret → Text
+   - Name: `sonar_token`
+   - Value: token from SonarQube (My Account → Security → Generate)
+
+2. **Create SonarQube variable** (optional):
+   - Project Settings → Variables → + New Variable
+   - Name: `sonar_host_url`
+   - Value: `http://YOUR-BASTION-IP:9000`
+
+### Step 1: Push Code to GitHub
+
+```bash
+git add .
+git commit -m "Episode 5: DevSecOps pipeline"
+git push origin master
+```
+
+### Step 2: Import Pipeline in Harness
+
+1. Pipelines → Import from Git
+2. Fill in:
+   - Pipeline Name: `devsecops-pipeline`
+   - Git Connector: `Github` (account level)
+   - Repository: `Harness-CI-CD-Zero-to-Hero`
+   - Branch: `master`
+   - YAML Path: `Episode-05/node-project/.harness/devsecops-pipeline.yaml`
+3. Click Import
+
+### Step 3: Run the Pipeline
+
+1. Click "Run Pipeline"
+2. Select branch: `master`
+3. Click "Run Pipeline"
+
+### Step 4: Watch 5 Stages Execute
+
+```
+Stage 1: Build & Test
+  ├── Install Dependencies (npm ci — cached)
+  ├── PARALLEL:
+  │   ├── Lint Check
+  │   ├── Unit Tests + Coverage
+  │   ├── Gitleaks (secret detection) 🔑
+  │   └── SonarQube (code quality + security)
+
+Stage 2: Security Scanning
+  ├── Build Docker Image
+  ├── PARALLEL:
+  │   ├── Trivy (image CVEs) 🐳
+  │   └── OWASP/npm audit (dependencies) 📦
+  └── Security Summary
+
+Stage 3: Push to ECR
+  ├── Create ECR Repo
+  ├── Push to ECR (OIDC)
+  └── Pipeline Complete Summary
+
+Stage 4: Approval ⏸️
+  └── Click Approve (to delete) or Reject (to keep images)
+
+Stage 5: Delete ECR (after approval)
+  └── Delete ECR repo + images
+```
+
+### Step 5: Create Triggers (Optional)
+
+1. Pipelines → devsecops-pipeline → Triggers tab
+2. Click + New Trigger:
+   - **Git Push**: Webhook → GitHub → Push → branch = master
+   - **PR trigger**: Webhook → GitHub → Pull Request → target = master
+   - **Cron**: Scheduled → `0 2 * * *` (daily 2 AM security scan)
+
+---
+
+## Security Tools Summary
+
+| Tool | What It Checks | Runs In | Image Used |
+|------|----------------|---------|------------|
+| Gitleaks | Secrets in code | Stage 1 (parallel) | `zricethezav/gitleaks:latest` |
+| SonarQube | Code quality, bugs | Stage 1 (parallel) | `sonarsource/sonar-scanner-cli:latest` |
+| Trivy | Docker image CVEs | Stage 2 (parallel) | `aquasec/trivy:latest` |
+| OWASP/npm audit | Dependency vulns | Stage 2 (parallel) | Built-in (npm audit) |
+
+## Performance Features
+
+| Feature | What It Does | Time Saved |
+|---------|-------------|------------|
+| npm Caching | Reuses node_modules between builds | 2-3 min/build |
+| Parallel Steps (Stage 1) | Lint + Test + Gitleaks + SonarQube run together | ~50% |
+| Parallel Steps (Stage 2) | Trivy + OWASP run together | ~50% |
+
+---
+
+## Project Structure
+
+```
+Episode-05/
+├── README.md                              ← This file
+└── node-project/
+    ├── package.json                       ← Node.js app
+    ├── src/index.js                       ← Express app (3 endpoints)
+    ├── src/index.test.js                  ← Jest unit tests
+    ├── Dockerfile                         ← Multi-stage, secure, non-root
+    ├── sonar-project.properties           ← SonarQube config
+    ├── .gitignore
+    ├── DEPLOY-STEPS.md                    ← Quick reference
+    └── .harness/
+        ├── devsecops-pipeline.yaml        ← Main pipeline (5 stages)
+        └── triggers.yaml                  ← Trigger examples (reference)
 ```
 
 ---

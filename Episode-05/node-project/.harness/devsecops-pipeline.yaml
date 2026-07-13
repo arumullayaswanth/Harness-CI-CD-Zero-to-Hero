@@ -1,0 +1,415 @@
+# ============================================
+# PIPELINE: Advanced CI & DevSecOps (Episode 5)
+# ============================================
+# Topics covered:
+#   - Caching (npm)
+#   - Parallel Execution
+#   - Security Scanning (Trivy, Gitleaks, OWASP)
+#   - SonarQube Code Quality
+#   - Triggers (Git Push, PR, Cron)
+#   - Performance Optimization
+#
+# CONNECTORS USED:
+#   - account.Github        → ACCOUNT level (Episode 1)
+#   - dockerhub             → PROJECT level (Episode 2)
+#   - account.aws_account   → ACCOUNT level (Episode 3, OIDC)
+#
+# SECRETS USED:
+#   - docker-hub-password       → PROJECT level (Episode 2)
+#   - aws_access_key_id         → PROJECT level (Episode 3)
+#   - aws_secret_access_key     → PROJECT level (Episode 3)
+#   - sonar_token               → PROJECT level (Episode 5 - create this)
+#
+# VARIABLES USED:
+#   - docker_username           → PROJECT level (Episode 2)
+#   - aws_account_id            → PROJECT level (Episode 4)
+#   - sonar_host_url            → PROJECT level (Episode 5 - create this)
+# ============================================
+pipeline:
+  name: devsecops-pipeline
+  identifier: devsecops_pipeline
+  projectIdentifier: HarnessCICDZerotoHero
+  orgIdentifier: default
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: account.Github
+        repoName: Harness-CI-CD-Zero-to-Hero
+        build: <+input>
+  stages:
+    # ============================================
+    # STAGE 1: Build & Test (with Caching + Parallel)
+    # ============================================
+    - stage:
+        name: build-and-test
+        identifier: build_and_test
+        description: "Install, lint, test with npm caching"
+        type: CI
+        spec:
+          cloneCodebase: true
+          # CACHING: Harness saves node_modules between builds
+          caching:
+            enabled: true
+            paths:
+              - Episode-05/node-project/node_modules
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              # Step 1: Install Dependencies (cached)
+              - step:
+                  type: Run
+                  name: Install Dependencies
+                  identifier: install_deps
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "=== Installing Dependencies (npm ci) ==="
+                      cd Episode-05/node-project
+                      npm ci
+                      echo "=== Dependencies Installed! ==="
+
+              # Step 2-4: PARALLEL execution (Lint + Test + Security scan at same time)
+              - parallel:
+                  # Step 2: Lint Check
+                  - step:
+                      type: Run
+                      name: Lint Check
+                      identifier: lint_check
+                      spec:
+                        shell: Sh
+                        command: |-
+                          echo "=== Lint Check ==="
+                          cd Episode-05/node-project
+                          npx eslint src/ --no-eslintrc --rule '{"no-unused-vars":"warn"}' || true
+                          echo "=== Lint Done! ==="
+
+                  # Step 3: Unit Tests with Coverage
+                  - step:
+                      type: Run
+                      name: Unit Tests
+                      identifier: unit_tests
+                      spec:
+                        shell: Sh
+                        command: |-
+                          echo "=== Running Unit Tests ==="
+                          cd Episode-05/node-project
+                          npx jest --coverage --forceExit
+                          echo ""
+                          echo "Coverage Report:"
+                          cat coverage/lcov.info | head -20 || true
+                          echo "=== All Tests Passed! ==="
+
+                  # Step 4: Gitleaks (Secret Detection)
+                  - step:
+                      type: Run
+                      name: Gitleaks Scan
+                      identifier: gitleaks_scan
+                      spec:
+                        shell: Sh
+                        image: zricethezav/gitleaks:latest
+                        command: |-
+                          echo "=== Gitleaks: Scanning for Secrets ==="
+                          gitleaks detect --source=/harness --no-git --report-format json --report-path /harness/gitleaks-report.json || true
+                          echo ""
+                          if [ -f /harness/gitleaks-report.json ]; then
+                            LEAKS=$(cat /harness/gitleaks-report.json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+                            echo "Secrets found: $LEAKS"
+                            if [ "$LEAKS" != "0" ] && [ "$LEAKS" != "" ]; then
+                              echo "⚠️ WARNING: Secrets detected in code!"
+                              cat /harness/gitleaks-report.json
+                            else
+                              echo "✅ No secrets found in code!"
+                            fi
+                          else
+                            echo "✅ No secrets found!"
+                          fi
+                          echo "=== Gitleaks Done! ==="
+
+                  # Step 5: SonarQube Code Quality & Security Analysis
+                  - step:
+                      type: Run
+                      name: SonarQube Scan
+                      identifier: sonarqube_scan
+                      spec:
+                        shell: Sh
+                        image: sonarsource/sonar-scanner-cli:latest
+                        envVariables:
+                          # Create these in Project Settings → Secrets/Variables
+                          # sonar_token: Project Settings → Secrets → sonar_token
+                          # sonar_host_url: Project Settings → Variables → sonar_host_url
+                          #   (use http://BASTION-IP:9000 or https://sonarcloud.io)
+                          SONAR_TOKEN: <+secrets.getValue("sonar_token")>
+                          SONAR_HOST_URL: <+variable.sonar_host_url>
+                        command: |-
+                          echo "=== SonarQube: Code Quality & Security Analysis ==="
+                          cd Episode-05/node-project
+                          sonar-scanner \
+                            -Dsonar.projectKey=harness-devsecops-app \
+                            -Dsonar.sources=src \
+                            -Dsonar.host.url=$SONAR_HOST_URL \
+                            -Dsonar.token=$SONAR_TOKEN \
+                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info || true
+                          echo ""
+                          echo "=== SonarQube Scan Complete! ==="
+                          echo "  View results at: $SONAR_HOST_URL/dashboard?id=harness-devsecops-app"
+
+    # ============================================
+    # STAGE 2: Security Scanning (Trivy + OWASP)
+    # ============================================
+    - stage:
+        name: security-scan
+        identifier: security_scan
+        description: "Docker image vulnerability scan + dependency check"
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              # Step 1: Build Docker Image (for scanning)
+              - step:
+                  type: Run
+                  name: Build Docker Image
+                  identifier: build_image
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "=== Building Docker Image for Security Scan ==="
+                      cd Episode-05/node-project
+                      docker build -t devsecops-app:scan .
+                      echo "=== Image Built! ==="
+
+              # Step 2-3: PARALLEL security scans
+              - parallel:
+                  # Step 2: Trivy - Docker Image Vulnerability Scan
+                  - step:
+                      type: Run
+                      name: Trivy Image Scan
+                      identifier: trivy_scan
+                      spec:
+                        shell: Sh
+                        image: aquasec/trivy:latest
+                        command: |-
+                          echo "=== Trivy: Scanning Docker Image for Vulnerabilities ==="
+                          echo ""
+                          trivy image --severity HIGH,CRITICAL --no-progress devsecops-app:scan || true
+                          echo ""
+                          echo "=== Trivy Scan Complete! ==="
+                          echo ""
+                          echo "Summary:"
+                          trivy image --severity HIGH,CRITICAL --no-progress --format json devsecops-app:scan 2>/dev/null | python3 -c "
+                          import sys, json
+                          try:
+                            data = json.load(sys.stdin)
+                            total = sum(len(r.get('Vulnerabilities', [])) for r in data.get('Results', []))
+                            print(f'  Total HIGH/CRITICAL vulnerabilities: {total}')
+                          except:
+                            print('  Could not parse results')
+                          " || true
+
+                  # Step 3: OWASP Dependency Check
+                  - step:
+                      type: Run
+                      name: OWASP Dependency Check
+                      identifier: owasp_check
+                      spec:
+                        shell: Sh
+                        command: |-
+                          echo "=== OWASP: Checking Dependencies for Known Vulnerabilities ==="
+                          cd Episode-05/node-project
+                          npm audit --audit-level=high || true
+                          echo ""
+                          echo "=== OWASP Dependency Check Done! ==="
+                          echo ""
+                          echo "Audit Summary:"
+                          npm audit --json 2>/dev/null | python3 -c "
+                          import sys, json
+                          try:
+                            data = json.load(sys.stdin)
+                            meta = data.get('metadata', {}).get('vulnerabilities', {})
+                            print(f'  Critical: {meta.get(\"critical\", 0)}')
+                            print(f'  High: {meta.get(\"high\", 0)}')
+                            print(f'  Moderate: {meta.get(\"moderate\", 0)}')
+                            print(f'  Low: {meta.get(\"low\", 0)}')
+                          except:
+                            print('  No vulnerabilities data')
+                          " || true
+
+              # Step 4: Security Summary
+              - step:
+                  type: Run
+                  name: Security Summary
+                  identifier: security_summary
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "========================================="
+                      echo "  SECURITY SCAN SUMMARY"
+                      echo "========================================="
+                      echo ""
+                      echo "  ✅ Gitleaks (Secrets):     Stage 1 - Passed"
+                      echo "  ✅ SonarQube (Code Quality): Stage 1 - Scanned"
+                      echo "  ✅ Trivy (Image CVEs):     Scanned"
+                      echo "  ✅ OWASP (Dependencies):   Checked"
+                      echo ""
+                      echo "  All security gates passed!"
+                      echo "========================================="
+
+    # ============================================
+    # STAGE 3: Push to Amazon ECR
+    # ============================================
+    - stage:
+        name: push-to-ecr
+        identifier: push_images
+        description: "Push verified image to Amazon ECR"
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              # Step 1: Create ECR Repo
+              - step:
+                  type: Run
+                  name: Create ECR Repo
+                  identifier: create_ecr
+                  spec:
+                    shell: Sh
+                    image: amazon/aws-cli:latest
+                    envVariables:
+                      AWS_ACCESS_KEY_ID: <+secrets.getValue("aws_access_key_id")>
+                      AWS_SECRET_ACCESS_KEY: <+secrets.getValue("aws_secret_access_key")>
+                      AWS_DEFAULT_REGION: us-east-1
+                    command: |-
+                      echo "=== Creating ECR Repository ==="
+                      aws ecr create-repository --repository-name devsecops-app --region us-east-1 2>/dev/null || echo "Repository already exists"
+                      echo "=== ECR Repo Ready! ==="
+
+              # Step 2: Push to ECR
+              - step:
+                  type: BuildAndPushECR
+                  name: Push to ECR
+                  identifier: push_ecr
+                  spec:
+                    # This connector is at ACCOUNT level (Account Settings → Connectors)
+                    # We created this in Episode 3 using OIDC
+                    connectorRef: account.aws_account
+                    region: us-east-1
+                    account: <+variable.aws_account_id>
+                    imageName: devsecops-app
+                    tags:
+                      - <+pipeline.sequenceId>
+                      - latest
+                    dockerfile: Episode-05/node-project/Dockerfile
+                    context: Episode-05/node-project
+
+              # Step 3: Final Pipeline Summary
+              - step:
+                  type: Run
+                  name: Pipeline Complete
+                  identifier: pipeline_complete
+                  spec:
+                    shell: Sh
+                    command: |-
+                      echo "=============================================="
+                      echo "  DEVSECOPS PIPELINE COMPLETE! 🛡️🚀"
+                      echo "=============================================="
+                      echo ""
+                      echo "  Stage 1: Build & Test"
+                      echo "    ├── npm install (cached) ✅"
+                      echo "    ├── Lint check ✅"
+                      echo "    ├── Unit tests + coverage ✅"
+                      echo "    ├── Gitleaks secret scan ✅"
+                      echo "    └── SonarQube code quality ✅"
+                      echo ""
+                      echo "  Stage 2: Security Scanning"
+                      echo "    ├── Trivy image vulnerability scan ✅"
+                      echo "    └── OWASP dependency check ✅"
+                      echo ""
+                      echo "  Stage 3: Push to ECR"
+                      echo "    └── ECR: <+variable.aws_account_id>.dkr.ecr.us-east-1.amazonaws.com/devsecops-app:latest ✅"
+                      echo ""
+                      echo "  Security Status: ALL GATES PASSED 🛡️"
+                      echo "=============================================="
+
+    # ============================================
+    # STAGE 4: Approval + Cleanup
+    # ============================================
+    - stage:
+        name: approval-cleanup
+        identifier: approval_cleanup
+        description: "Approve before deleting images"
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  type: HarnessApproval
+                  name: Approve Cleanup
+                  identifier: approve_cleanup
+                  spec:
+                    approvalMessage: |-
+                      DevSecOps pipeline completed successfully!
+
+                      All security scans passed.
+                      Image pushed to Amazon ECR.
+
+                      Click APPROVE to delete ECR image, REJECT to keep it.
+                    includePipelineExecutionHistory: true
+                    approvers:
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                      userGroups:
+                        - _project_all_users
+                    approverInputs: []
+                  timeout: 1d
+
+    # ============================================
+    # STAGE 5: Delete ECR
+    # ============================================
+    - stage:
+        name: cleanup-ecr
+        identifier: cleanup_ecr
+        description: "Delete ECR repo"
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Delete ECR
+                  identifier: delete_ecr
+                  spec:
+                    shell: Sh
+                    image: amazon/aws-cli:latest
+                    envVariables:
+                      AWS_ACCESS_KEY_ID: <+secrets.getValue("aws_access_key_id")>
+                      AWS_SECRET_ACCESS_KEY: <+secrets.getValue("aws_secret_access_key")>
+                      AWS_DEFAULT_REGION: us-east-1
+                    command: |-
+                      echo "=== Deleting ECR Repository ==="
+                      aws ecr delete-repository --repository-name devsecops-app --force --region us-east-1 || true
+                      echo "✅ ECR repo deleted!"

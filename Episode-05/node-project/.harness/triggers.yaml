@@ -1,0 +1,103 @@
+# ============================================
+# TRIGGERS for DevSecOps Pipeline (Episode 5)
+# ============================================
+# These are created in Harness UI (Pipelines → Triggers → + New Trigger)
+# This file is for REFERENCE only — shows what each trigger looks like
+# ============================================
+
+# ============================================
+# TRIGGER 1: Git Push (runs on every push to master)
+# ============================================
+# trigger:
+#   name: on-push-master
+#   identifier: on_push_master
+#   enabled: true
+#   type: Webhook
+#   spec:
+#     type: Github
+#     spec:
+#       type: Push
+#       spec:
+#         connectorRef: account.Github
+#         repoName: Harness-CI-CD-Zero-to-Hero
+#         autoAbortPreviousExecutions: true
+#         actions: []
+#         payloadConditions:
+#           - key: targetBranch
+#             operator: Equals
+#             value: master
+#         headerConditions: []
+#     inputYaml: |
+#       pipeline:
+#         properties:
+#           ci:
+#             codebase:
+#               build:
+#                 type: branch
+#                 spec:
+#                   branch: master
+
+# ============================================
+# TRIGGER 2: Pull Request (runs on PR to master)
+# ============================================
+# trigger:
+#   name: on-pull-request
+#   identifier: on_pull_request
+#   enabled: true
+#   type: Webhook
+#   spec:
+#     type: Github
+#     spec:
+#       type: PullRequest
+#       spec:
+#         connectorRef: account.Github
+#         repoName: Harness-CI-CD-Zero-to-Hero
+#         autoAbortPreviousExecutions: true
+#         actions:
+#           - Open
+#           - Reopen
+#           - Synchronize
+#         payloadConditions:
+#           - key: targetBranch
+#             operator: Equals
+#             value: master
+
+# ============================================
+# TRIGGER 3: Cron (runs daily at 2 AM UTC)
+# ============================================
+# trigger:
+#   name: daily-security-scan
+#   identifier: daily_security_scan
+#   enabled: true
+#   type: Scheduled
+#   spec:
+#     type: Cron
+#     spec:
+#       expression: "0 2 * * *"
+#     inputYaml: |
+#       pipeline:
+#         properties:
+#           ci:
+#             codebase:
+#               build:
+#                 type: branch
+#                 spec:
+#                   branch: master
+
+# ============================================
+# HOW TO CREATE TRIGGERS IN HARNESS UI:
+# ============================================
+#
+# 1. Go to: Pipelines → devsecops-pipeline → Triggers tab
+# 2. Click: + New Trigger
+# 3. Choose type:
+#    - Webhook → GitHub → Push (for git push trigger)
+#    - Webhook → GitHub → Pull Request (for PR trigger)
+#    - Scheduled → Cron (for daily scan)
+# 4. Configure conditions (branch, actions)
+# 5. Save
+#
+# After creating:
+#   - Push to master → pipeline auto-runs ✅
+#   - Create PR → pipeline auto-runs ✅
+#   - Every day at 2 AM → pipeline auto-runs ✅
