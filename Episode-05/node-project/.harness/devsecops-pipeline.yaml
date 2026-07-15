@@ -190,15 +190,12 @@ pipeline:
                           SONAR_TOKEN: <+secrets.getValue("sonar_token")>
                           SONAR_HOST_URL: <+variable.sonar_host_url>
                           SONAR_USER_HOME: /tmp/.sonar
-                          SONAR_SCANNER_OPTS: "-Dsonar.nodejs.executable=/usr/local/bin/node"
                         command: |-
                           echo "=== SonarQube: Code Quality & Security Analysis ==="
                           cd Episode-05/node-project
-                          which node && node --version || true
                           sonar-scanner \
                             -Dsonar.host.url=$SONAR_HOST_URL \
-                            -Dsonar.token=$SONAR_TOKEN \
-                            -Dsonar.nodejs.executable=$(which node) || true
+                            -Dsonar.token=$SONAR_TOKEN || true
                           echo ""
                           echo "=== SonarQube Scan Complete! ==="
                           echo "  View results at: $SONAR_HOST_URL/dashboard?id=harness-devsecops-app"
