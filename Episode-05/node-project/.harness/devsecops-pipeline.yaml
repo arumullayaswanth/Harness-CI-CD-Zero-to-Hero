@@ -197,6 +197,7 @@ pipeline:
                             -Dsonar.sources=src \
                             -Dsonar.host.url=$SONAR_HOST_URL \
                             -Dsonar.token=$SONAR_TOKEN \
+                            -Dsonar.working.directory=/tmp/.scannerwork \
                             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info || true
                           echo ""
                           echo "=== SonarQube Scan Complete! ==="
