@@ -14,7 +14,10 @@ resource "aws_iam_role" "eks_cluster" {
       Principal = {
         Service = "eks.amazonaws.com"
       }
-      Action = "sts:AssumeRole"
+      Action = [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ]
     }]
   })
 }

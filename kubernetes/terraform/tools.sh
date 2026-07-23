@@ -1,78 +1,101 @@
 #!/bin/bash
-# Don't use set -e (if one tool fails, continue installing others)
+# ═══════════════════════════════════════════════════════════════════
+# tools.sh — Bastion Server Setup Script
+# Installs: kubectl, eksctl, Helm, AWS CLI, Docker, SonarQube
+# OS: Amazon Linux 2023
+# Run on first boot via user_data
+# ═══════════════════════════════════════════════════════════════════
 
-echo "========================================="
-echo "  Installing tools on Bastion Server"
-echo "  OS: Amazon Linux 2023"
-echo "========================================="
+echo "=========================================="
+echo "  BASTION SERVER SETUP"
+echo "=========================================="
 
 # Update system
-dnf update -y || yum update -y
-dnf install -y unzip jq bc git docker || yum install -y unzip jq bc git docker
+dnf update -y
+dnf install -y unzip jq bc git
 
-# ----------------------------- SSM Agent (pre-installed on AL2023) ---------
+# Don't install curl if curl-minimal exists (Amazon Linux 2023)
+command -v curl >/dev/null 2>&1 || dnf install -y curl-minimal
+
+# ─────────────────────────────────────────────────────────────────
+# SSM Agent (pre-installed on AL2023)
+# ─────────────────────────────────────────────────────────────────
 systemctl enable amazon-ssm-agent
 systemctl start amazon-ssm-agent
 
-# ----------------------------- Docker -------------------------------------
+# ─────────────────────────────────────────────────────────────────
+# Docker
+# ─────────────────────────────────────────────────────────────────
+dnf install -y docker
 systemctl enable docker
 systemctl start docker
 usermod -aG docker ec2-user
+chmod 666 /var/run/docker.sock
 
-# ----------------------------- kubectl ------------------------------------
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-install kubectl /usr/local/bin/kubectl
+# ─────────────────────────────────────────────────────────────────
+# kubectl
+# ─────────────────────────────────────────────────────────────────
+curl -LO "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+chmod +x kubectl
+mv kubectl /usr/local/bin/
 kubectl version --client || true
 
-# ----------------------------- eksctl -------------------------------------
-curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
-mv /tmp/eksctl /usr/local/bin/eksctl
+# ─────────────────────────────────────────────────────────────────
+# eksctl
+# ─────────────────────────────────────────────────────────────────
+curl --silent --location \
+  "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" \
+  | tar xz -C /tmp
+mv /tmp/eksctl /usr/local/bin/
 eksctl version || true
 
-# ----------------------------- Helm ---------------------------------------
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+# ─────────────────────────────────────────────────────────────────
+# Helm
+# ─────────────────────────────────────────────────────────────────
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 helm version || true
 
-# ----------------------------- AWS CLI v2 (pre-installed on AL2023) --------
-aws --version || true
+# ─────────────────────────────────────────────────────────────────
+# Kernel params for SonarQube (Elasticsearch requirement)
+# ─────────────────────────────────────────────────────────────────
+tee /etc/sysctl.d/99-sonarqube.conf > /dev/null <<'EOF'
+vm.max_map_count=524288
+fs.file-max=131072
+EOF
+sysctl --system
 
-# ----------------------------- PostgreSQL ----------------------------------
-dnf install -y postgresql15 postgresql15-server || yum install -y postgresql15 postgresql15-server || true
-/usr/bin/postgresql-setup --initdb || true
-systemctl enable postgresql || true
-systemctl start postgresql || true
-psql --version || true
+# ─────────────────────────────────────────────────────────────────
+# SonarQube (Docker, port 9000)
+# Access: http://BASTION-IP:9000  Login: admin / admin
+# ─────────────────────────────────────────────────────────────────
+docker volume create sonarqube_data
+docker volume create sonarqube_logs
+docker volume create sonarqube_extensions
 
-# ----------------------------- MariaDB ------------------------------------
-dnf install -y mariadb105-server || yum install -y mariadb105-server || true
-systemctl enable mariadb || true
-systemctl start mariadb || true
-mysql --version || true
+docker rm -f sonarqube >/dev/null 2>&1 || true
+docker run -d \
+  --name sonarqube \
+  --restart unless-stopped \
+  -p 9000:9000 \
+  -v sonarqube_data:/opt/sonarqube/data \
+  -v sonarqube_logs:/opt/sonarqube/logs \
+  -v sonarqube_extensions:/opt/sonarqube/extensions \
+  sonarqube:lts-community
 
-# ----------------------------- Helm Repos ---------------------------------
-helm repo add autoscaler https://kubernetes.github.io/autoscaler || true
+# ─────────────────────────────────────────────────────────────────
+# Helm Repos
+# ─────────────────────────────────────────────────────────────────
 helm repo add stable https://charts.helm.sh/stable || true
 helm repo add bitnami https://charts.bitnami.com/bitnami || true
 helm repo update || true
 
-# ----------------------------- Harness Docker Runner -----------------------
-curl -L -o /usr/local/bin/harness-docker-runner https://github.com/harness/harness-docker-runner/releases/download/v0.1.25/harness-docker-runner-linux-amd64
-chmod +x /usr/local/bin/harness-docker-runner
-
-# ----------------------------- Trivy (security scanner) -------------------
-curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin || true
-
-# ----------------------------- SonarQube Scanner --------------------------
-curl -L -o /tmp/sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
-unzip /tmp/sonar-scanner.zip -d /opt/ || true
-ln -s /opt/sonar-scanner-*/bin/sonar-scanner /usr/local/bin/sonar-scanner || true
-rm -f /tmp/sonar-scanner.zip
-
-# ----------------------------- SonarQube Server (port 9000) ----------------
-# Access at: http://BASTION-PUBLIC-IP:9000
-# Default login: admin / admin
-docker run -d --name sonarqube --restart always -p 9000:9000 sonarqube:lts-community
-
-echo "========================================="
-echo "  All tools installed!"
-echo "========================================="
+echo "=========================================="
+echo "  ✅ BASTION SETUP COMPLETE!"
+echo "=========================================="
+echo ""
+echo "  Connect to EKS:"
+echo "    aws eks update-kubeconfig --name harness-eks-cluster --region us-east-1"
+echo "    kubectl get nodes"
+echo ""
+echo "  SonarQube: http://BASTION-IP:9000 (admin/admin)"
+echo ""
