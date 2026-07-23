@@ -1,0 +1,26 @@
+# ============================================
+# SERVICE: Exposes pods to the network (like a doorbell)
+# Type: LoadBalancer → Creates AWS ELB for external access
+#
+# Think of it as: The apartment's doorbell
+# Users ring the doorbell (LoadBalancer URL) and K8s routes to a pod
+#
+# Port mapping: External port 80 → Container port 3000
+# Access: http://LOADBALANCER-URL (no port needed, uses 80)
+# ============================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: gocart
+  namespace: gocart
+  labels:
+    app: gocart
+spec:
+  type: LoadBalancer
+  selector:
+    app: gocart
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+      name: http

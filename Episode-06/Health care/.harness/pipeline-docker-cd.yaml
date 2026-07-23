@@ -1,0 +1,283 @@
+# ============================================
+# PIPELINE: Episode 6, Topic 1 — Deploy Healthcare Website to EC2
+# ============================================
+# Build → Push ECR → Deploy Docker on EC2 → Approval → Cleanup
+#
+# AUTHENTICATION:
+#   Stage 1 (Harness Cloud): Uses access keys (Harness Cloud has no IAM role)
+#   Stage 2 (Docker Delegate on EC2): NO keys needed! EC2 has IAM Admin Role attached
+#   Stage 4 (Docker Delegate on EC2): NO keys needed! Same EC2
+#
+# DOCKER DELEGATE FOR CD (install on EC2):
+#   docker run -d --cpus=1 --memory=2g \
+#     -v /var/run/docker.sock:/var/run/docker.sock \
+#     -e DELEGATE_NAME=cd-docker-delegate \
+#     -e NEXT_GEN="true" \
+#     -e DELEGATE_TYPE="DOCKER" \
+#     -e ACCOUNT_ID=YOUR_ACCOUNT_ID \
+#     -e DELEGATE_TOKEN=YOUR_TOKEN \
+#     -e MANAGER_HOST_AND_PORT=https://app.harness.io \
+#     harness/delegate:latest
+#
+# PREREQUISITES:
+#   1. account.Github connector - Episode 1
+#   2. account.aws_account OIDC connector - Episode 3
+#   3. Secret: aws_access_key_id - Episode 3 (only for Harness Cloud stages)
+#   4. Secret: aws_secret_access_key - Episode 3 (only for Harness Cloud stages)
+#   5. Variable: aws_account_id - Episode 4
+#   6. Variable: aws_region - Episode 3
+#   7. EC2 with Docker + IAM Admin Role + CD Delegate
+#   8. EC2 Security Group: Allow port 5000 inbound
+# ============================================
+pipeline:
+  name: episode6-healthcare-docker-cd
+  identifier: episode6_healthcare_docker_cd
+  projectIdentifier: HarnessCICDZerotoHero
+  orgIdentifier: default
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: account.Github
+        repoName: Harness-CI-CD-Zero-to-Hero
+        build: <+input>
+  stages:
+    # ============================================
+    # STAGE 1: Build & Push to ECR (Harness Cloud)
+    # NOTE: Harness Cloud needs access keys (no IAM role)
+    # ============================================
+    - stage:
+        name: build-and-push
+        identifier: build_and_push
+        description: "Build Healthcare website image and push to ECR"
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Create ECR Repo
+                  identifier: create_ecr
+                  spec:
+                    shell: Sh
+                    image: amazon/aws-cli:latest
+                    envVariables:
+                      AWS_ACCESS_KEY_ID: <+secrets.getValue("aws_access_key_id")>
+                      AWS_SECRET_ACCESS_KEY: <+secrets.getValue("aws_secret_access_key")>
+                      AWS_DEFAULT_REGION: <+variable.aws_region>
+                    command: |-
+                      aws ecr create-repository --repository-name healthcare-website --region <+variable.aws_region> 2>/dev/null || echo "Repository already exists"
+
+              - step:
+                  type: BuildAndPushECR
+                  name: Build and Push to ECR
+                  identifier: build_push_ecr
+                  spec:
+                    connectorRef: account.aws_account
+                    region: <+variable.aws_region>
+                    account: <+variable.aws_account_id>
+                    imageName: healthcare-website
+                    tags:
+                      - <+pipeline.sequenceId>
+                      - latest
+                    dockerfile: "Episode-06/Health care/Dockerfile"
+                    context: "Episode-06/Health care"
+
+    # ============================================
+    # STAGE 2: Deploy to EC2 (Docker Delegate)
+    # NOTE: EC2 has IAM Admin Role — NO access keys needed!
+    # ============================================
+    - stage:
+        name: deploy-to-ec2
+        identifier: deploy_to_ec2
+        description: "Deploy Healthcare website on EC2 via Docker Delegate"
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Docker
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Deploy Container
+                  identifier: deploy_container
+                  spec:
+                    shell: Sh
+                    image: amazon/aws-cli:latest
+                    command: |-
+                      IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:<+pipeline.sequenceId>"
+
+                      aws ecr get-login-password --region <+variable.aws_region> | docker login --username AWS --password-stdin <+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com
+
+                      docker stop healthcare-website 2>/dev/null || true
+                      docker rm healthcare-website 2>/dev/null || true
+
+                      docker pull $IMAGE
+
+                      docker run -d \
+                        --name healthcare-website \
+                        -p 5000:5000 \
+                        --restart unless-stopped \
+                        $IMAGE
+
+              - step:
+                  type: Run
+                  name: Health Check
+                  identifier: health_check
+                  spec:
+                    shell: Sh
+                    image: alpine:latest
+                    command: |-
+                      apk add --no-cache curl > /dev/null 2>&1
+                      sleep 5
+                      HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" http://172.17.0.1:5000/health 2>/dev/null || echo "000")
+                      if [ "$HTTP_CODE" = "200" ]; then
+                        echo "Health check PASSED (HTTP 200)"
+                      else
+                        echo "Health check FAILED (HTTP $HTTP_CODE)"
+                        exit 1
+                      fi
+
+              # Tag current image as :stable (only runs if health check passed)
+              # Rollback will pull :stable instead of :latest
+              - step:
+                  type: Run
+                  name: Tag as Stable
+                  identifier: tag_stable
+                  spec:
+                    shell: Sh
+                    image: amazon/aws-cli:latest
+                    command: |-
+                      MANIFEST=$(aws ecr batch-get-image --repository-name healthcare-website --image-ids imageTag=<+pipeline.sequenceId> --region <+variable.aws_region> --query 'images[0].imageManifest' --output text)
+                      aws ecr put-image --repository-name healthcare-website --image-tag stable --image-manifest "$MANIFEST" --region <+variable.aws_region> || true
+
+          # ============================================
+          # ROLLBACK (auto-triggered on deploy failure)
+          # EC2 has IAM role — no keys needed
+          # ============================================
+          rollback:
+            steps:
+              - step:
+                  type: Run
+                  name: Stop Failed Deployment
+                  identifier: stop_failed
+                  spec:
+                    shell: Sh
+                    command: |-
+                      docker stop healthcare-website 2>/dev/null || true
+                      docker rm healthcare-website 2>/dev/null || true
+
+              - step:
+                  type: Run
+                  name: Restore Last Successful Build
+                  identifier: restore_last
+                  spec:
+                    shell: Sh
+                    image: amazon/aws-cli:latest
+                    command: |-
+                      ROLLBACK_IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:stable"
+                      aws ecr get-login-password --region <+variable.aws_region> | docker login --username AWS --password-stdin <+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com
+                      docker pull $ROLLBACK_IMAGE || true
+
+              - step:
+                  type: Run
+                  name: Start Previous Version
+                  identifier: start_previous
+                  spec:
+                    shell: Sh
+                    command: |-
+                      ROLLBACK_IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:stable"
+                      docker run -d \
+                        --name healthcare-website \
+                        -p 5000:5000 \
+                        --restart unless-stopped \
+                        $ROLLBACK_IMAGE || true
+
+              - step:
+                  type: Run
+                  name: Rollback Health Check
+                  identifier: rollback_health
+                  spec:
+                    shell: Sh
+                    image: alpine:latest
+                    command: |-
+                      apk add --no-cache curl > /dev/null 2>&1
+                      sleep 5
+                      HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" http://172.17.0.1:5000/health/ 2>/dev/null || echo "000")
+                      if [ "$HTTP_CODE" = "200" ]; then
+                        echo "Rollback successful (HTTP 200)"
+                      else
+                        echo "Rollback failed (HTTP $HTTP_CODE)"
+                        exit 1
+                      fi
+
+    # ============================================
+    # STAGE 3: Approval
+    # ============================================
+    - stage:
+        name: approval
+        identifier: approval
+        description: "Approve cleanup"
+        type: Approval
+        spec:
+          execution:
+            steps:
+              - step:
+                  type: HarnessApproval
+                  name: Approve Cleanup
+                  identifier: approve_cleanup
+                  timeout: 1d
+                  spec:
+                    approvalMessage: |-
+                      Healthcare website deployed on EC2.
+                      Access: http://EC2-PUBLIC-IP
+
+                      APPROVE to stop container and delete ECR.
+                      REJECT to keep running.
+                    approvers:
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                      userGroups:
+                        - _project_all_users
+
+    # ============================================
+    # STAGE 4: Cleanup (Docker Delegate — no keys needed)
+    # ============================================
+    - stage:
+        name: cleanup
+        identifier: cleanup
+        description: "Stop container and delete ECR"
+        type: CI
+        spec:
+          cloneCodebase: false
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Docker
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Run
+                  name: Delete All
+                  identifier: delete_all
+                  spec:
+                    shell: Sh
+                    image: amazon/aws-cli:latest
+                    command: |-
+                      docker stop healthcare-website 2>/dev/null || true
+                      docker rm healthcare-website 2>/dev/null || true
+                      aws ecr delete-repository --repository-name healthcare-website --force --region <+variable.aws_region> || true

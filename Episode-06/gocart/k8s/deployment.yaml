@@ -1,0 +1,91 @@
+# ============================================
+# DEPLOYMENT: Manages pods (creates, updates, scales)
+# Think of it as: An apartment that can have multiple rooms (pods)
+#
+# DEPLOYMENT STRATEGY: RollingUpdate (zero downtime)
+#   maxSurge: 1       → Can create 1 extra pod during update
+#   maxUnavailable: 0 → Never let pods go below desired count
+#
+# HEALTH CHECKS:
+#   readinessProbe → "Is the pod READY to receive traffic?"
+#   livenessProbe  → "Is the pod still ALIVE?"
+#
+# ROLLOUT:
+#   kubectl rollout status deployment/gocart -n gocart
+#   kubectl rollout history deployment/gocart -n gocart
+#   kubectl rollout undo deployment/gocart -n gocart  ← ROLLBACK!
+# ============================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gocart
+  namespace: gocart
+  labels:
+    app: gocart
+spec:
+  replicas: 2
+  # ============================================
+  # DEPLOYMENT STRATEGY: Rolling Update
+  # ============================================
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: gocart
+  template:
+    metadata:
+      labels:
+        app: gocart
+    spec:
+      containers:
+        - name: gocart
+          image: <+artifact.image>
+          ports:
+            - containerPort: 3000
+              name: http
+          # ============================================
+          # ENVIRONMENT FROM CONFIGMAP + SECRET
+          # ============================================
+          envFrom:
+            - configMapRef:
+                name: gocart-config
+            - secretRef:
+                name: gocart-secrets
+          # ============================================
+          # RESOURCES (request = minimum, limit = maximum)
+          # ============================================
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          # ============================================
+          # READINESS PROBE: Is pod ready to receive traffic?
+          # K8s removes pod from Service if this fails
+          # initialDelaySeconds: 30 (Next.js needs time to start)
+          # ============================================
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+          # ============================================
+          # LIVENESS PROBE: Is pod still alive?
+          # K8s restarts pod if this fails
+          # ============================================
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            failureThreshold: 3
+            timeoutSeconds: 5

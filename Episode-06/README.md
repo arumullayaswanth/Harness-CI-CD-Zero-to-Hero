@@ -11,589 +11,280 @@ Like delivering a pizza from the kitchen (CI) to the customer's door (Production
 ### 1. What is Continuous Delivery (CD)?
 
 ```
-CI (What we built so far):
-  Code → Test → Build → Docker Image → Push to Registry
-  = You made the pizza 🍕
+CI (Episodes 1-5):     Code → Test → Build → Docker Image → Push to ECR
+CD (This episode):     Docker Image → Deploy to Server → Users access it
 
-CD (What we build now):
-  Docker Image → Deploy to Server → Users can access it
-  = You delivered the pizza to the customer 🚗💨
+CI  = You made the pizza 🍕
+CD  = You delivered it to the customer 🚗💨
 ```
 
-**Think of it like Amazon:**
-```
-CI  = Warehouse packs the box
-CD  = Delivery truck brings it to your house
-You = Happy customer using the new feature
-```
+### 2. Kubernetes Concepts
 
----
+| Concept | What It Is | Analogy |
+|---------|-----------|---------|
+| Namespace | Logical isolation | Floor in a building |
+| ConfigMap | Non-secret config | Instructions on the fridge |
+| Secret | Passwords, keys | Safe in the bedroom |
+| Deployment | Manages pods | Apartment with rooms |
+| Service | Network access | Doorbell |
+| Pod | Running container | Room where app lives |
 
-### 2. Kubernetes Deployment Concepts
+### 3. Deployment Strategies
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  KUBERNETES BASICS (Super Simple)                        │
-│                                                          │
-│  Pod         = A running copy of your app               │
-│  Deployment  = Manages your pods (creates, updates)     │
-│  Service     = A door to reach your pods (like a URL)   │
-│  Namespace   = A folder to organize things              │
-│  ConfigMap   = Settings for your app (non-secret)       │
-│  Secret      = Passwords/keys for your app              │
-│                                                          │
-│  ANALOGY:                                               │
-│  Namespace  = A floor in an apartment building          │
-│  Deployment = An apartment (can have multiple rooms)    │
-│  Pod        = A room where your app lives               │
-│  Service    = The apartment's doorbell                   │
-│  ConfigMap  = Instructions on the fridge                 │
-│  Secret     = The safe in the bedroom                   │
-└─────────────────────────────────────────────────────────┘
-```
+| Strategy | Downtime | Risk | Best For |
+|----------|----------|------|----------|
+| **Rolling** | None | Low | Most apps (default) |
+| **Blue-Green** | None | Low | Critical apps |
+| **Canary** | None | Lowest | High-traffic apps |
+| **Recreate** | YES | High | Dev/test only |
 
----
-
-### 3. Kubernetes Manifests for Our App
-
-#### Namespace
-```yaml
-# k8s/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: harness-course
-  labels:
-    app: harness-course
-```
-
-#### ConfigMap
-```yaml
-# k8s/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: harness-course
-data:
-  APP_ENV: "production"
-  APP_PORT: "8080"
-  LOG_LEVEL: "info"
-  APP_NAME: "Harness Course App"
-```
-
-#### Secret
-```yaml
-# k8s/secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: app-secrets
-  namespace: harness-course
-type: Opaque
-stringData:
-  DB_PASSWORD: "super-secret-password"
-  API_KEY: "my-api-key-12345"
-```
-
-#### Deployment
-```yaml
-# k8s/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: harness-course-app
-  namespace: harness-course
-  labels:
-    app: harness-course-app
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: harness-course-app
-  template:
-    metadata:
-      labels:
-        app: harness-course-app
-    spec:
-      containers:
-        - name: app
-          image: <+artifact.image>
-          ports:
-            - containerPort: 8080
-          env:
-            - name: APP_ENV
-              valueFrom:
-                configMapKeyRef:
-                  name: app-config
-                  key: APP_ENV
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: app-secrets
-                  key: DB_PASSWORD
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "250m"
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 5
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-```
-
-#### Service
-```yaml
-# k8s/service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: harness-course-app
-  namespace: harness-course
-spec:
-  type: LoadBalancer
-  selector:
-    app: harness-course-app
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 8080
-```
-
----
-
-### 4. Harness CD Concepts
+### 4. Rollback
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  HARNESS CD BUILDING BLOCKS                              │
-│                                                          │
-│  Service      = WHAT you're deploying (your app)        │
-│  Environment  = WHERE you're deploying (dev/prod)       │
-│  Infrastructure = HOW to reach the target (K8s cluster) │
-│  Execution    = The steps to deploy                      │
-│                                                          │
-│  ANALOGY:                                               │
-│  Service      = The pizza you made                      │
-│  Environment  = Customer's neighborhood (dev/staging)    │
-│  Infrastructure = The exact address                      │
-│  Execution    = Drive there, ring bell, hand it over    │
-└─────────────────────────────────────────────────────────┘
+Deploy v2 → Health check FAILS → exit 1 → Rollback auto-triggers
+  Docker:  Pull :stable tag → Start previous container
+  K8s:     kubectl rollout undo → Previous revision restored
 ```
 
----
-
-### 5. Deployment Strategies
+### 5. Authentication Pattern
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  1. ROLLING DEPLOYMENT                                   │
-│  ═══════════════════════                                 │
-│                                                          │
-│  Replace pods ONE BY ONE                                 │
-│                                                          │
-│  Before: [v1] [v1] [v1] [v1]                           │
-│  Step 1:  [v2] [v1] [v1] [v1]  ← 1 pod updated        │
-│  Step 2:  [v2] [v2] [v1] [v1]  ← 2 pods updated       │
-│  Step 3:  [v2] [v2] [v2] [v1]  ← 3 pods updated       │
-│  After:   [v2] [v2] [v2] [v2]  ← All done!            │
-│                                                          │
-│  ✅ Zero downtime                                        │
-│  ✅ Simple                                               │
-│  ❌ Both versions run at same time (briefly)            │
-│  Best for: Most applications                            │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│  2. BLUE-GREEN DEPLOYMENT                                │
-│  ════════════════════════                                │
-│                                                          │
-│  Run 2 environments, switch traffic instantly            │
-│                                                          │
-│  BLUE (current):  [v1] [v1] [v1]  ← Users here         │
-│  GREEN (new):     [v2] [v2] [v2]  ← Testing here       │
-│                                                          │
-│  Ready? SWITCH!                                          │
-│                                                          │
-│  BLUE (old):      [v1] [v1] [v1]  ← Nobody here        │
-│  GREEN (current): [v2] [v2] [v2]  ← Users here now!    │
-│                                                          │
-│  ✅ Instant rollback (switch back to Blue)              │
-│  ✅ Zero downtime                                        │
-│  ❌ Needs 2x resources                                  │
-│  Best for: Critical applications                        │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│  3. CANARY DEPLOYMENT                                    │
-│  ════════════════════                                    │
-│                                                          │
-│  Send small % of traffic to new version first           │
-│                                                          │
-│  Step 1: 10% traffic → [v2]    90% traffic → [v1]      │
-│  Step 2: 25% traffic → [v2]    75% traffic → [v1]      │
-│  Step 3: 50% traffic → [v2]    50% traffic → [v1]      │
-│  Step 4: 100% traffic → [v2]   Done!                    │
-│                                                          │
-│  ✅ Least risk (only small % of users see issues)       │
-│  ✅ Can monitor between steps                           │
-│  ❌ More complex                                        │
-│  Best for: High-traffic applications                    │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│  4. RECREATE (Big Bang)                                  │
-│  ════════════════════                                    │
-│                                                          │
-│  Kill everything, deploy new                             │
-│                                                          │
-│  Before: [v1] [v1] [v1]                                │
-│  Step 1:  [ ] [ ] [ ]     ← All killed (DOWNTIME!)     │
-│  After:  [v2] [v2] [v2]   ← All new                    │
-│                                                          │
-│  ✅ Simple, clean                                        │
-│  ❌ HAS DOWNTIME                                        │
-│  Best for: Development environments only                │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-### 6. Rollback
-
-```
-WHAT: Go back to the previous working version
-WHEN: Something goes wrong with the new version
-HOW:  Harness does it automatically or you can trigger manually
-
-┌─────────────────────────────────────────────┐
-│  AUTOMATIC ROLLBACK                          │
-│                                              │
-│  Deploy v2 → Health check fails             │
-│           → Harness sees failure             │
-│           → Automatically deploys v1 back   │
-│           → Users never noticed! ✅          │
-│                                              │
-│  MANUAL ROLLBACK                             │
-│                                              │
-│  Deploy v2 → Users report bugs              │
-│           → You click "Rollback" in Harness │
-│           → v1 is back instantly            │
-└─────────────────────────────────────────────┘
-```
-
----
-
-## 🖥️ Demo: Deploy Java/Spring Boot to Kubernetes
-
-### Step 1: Create a Service in Harness
-
-1. Go to Project → **Services** → **+ New Service**
-2. Fill in:
-   - Name: `harness-course-app`
-   - Deployment Type: **Kubernetes**
-3. Under **Service Definition**:
-   - Manifests: Add Kubernetes manifests from Git
-   - Artifacts: Docker Hub image
-
-**Service YAML:**
-```yaml
-service:
-  name: harness-course-app
-  identifier: harness_course_app
-  serviceDefinition:
-    type: Kubernetes
-    spec:
-      manifests:
-        - manifest:
-            identifier: k8s_manifests
-            type: K8sManifest
-            spec:
-              store:
-                type: Github
-                spec:
-                  connectorRef: github_connector
-                  repoName: harness-cicd-sample-app
-                  branch: main
-                  paths:
-                    - k8s/
-              skipResourceVersioning: false
-      artifacts:
-        primary:
-          primaryArtifactRef: dockerhub_image
-          sources:
-            - identifier: dockerhub_image
-              spec:
-                connectorRef: dockerhub_connector
-                imagePath: yourusername/harness-course-app
-                tag: <+input>
-              type: DockerRegistry
-```
-
-### Step 2: Create an Environment
-
-1. Go to **Environments** → **+ New Environment**
-2. Fill in:
-   - Name: `development`
-   - Type: **Pre-Production**
-
-3. Create another:
-   - Name: `production`
-   - Type: **Production**
-
-### Step 3: Create Infrastructure Definition
-
-1. Inside the `development` environment:
-2. **+ New Infrastructure** → **Kubernetes**
-3. Fill in:
-   - Name: `dev-k8s-cluster`
-   - Connector: `k8s-connector`
-   - Namespace: `harness-course-dev`
-
-### Step 4: Create CD Pipeline
-
-```yaml
-# .harness/cd-pipeline.yaml
-pipeline:
-  name: Deploy to Kubernetes
-  identifier: deploy_to_k8s
-  projectIdentifier: harness_course
-  orgIdentifier: learning
-
-  stages:
-    - stage:
-        name: Deploy to Dev
-        identifier: deploy_dev
-        type: Deployment
-        spec:
-          deploymentType: Kubernetes
-          service:
-            serviceRef: harness_course_app
-            serviceInputs:
-              serviceDefinition:
-                type: Kubernetes
-                spec:
-                  artifacts:
-                    primary:
-                      primaryArtifactRef: dockerhub_image
-                      sources:
-                        - identifier: dockerhub_image
-                          type: DockerRegistry
-                          spec:
-                            tag: <+input>
-          environment:
-            environmentRef: development
-            deployToAll: false
-            infrastructureDefinitions:
-              - identifier: dev_k8s_cluster
-          execution:
-            steps:
-              - step:
-                  name: Rolling Deployment
-                  identifier: rolling
-                  type: K8sRollingDeploy
-                  timeout: 10m
-                  spec:
-                    skipDryRun: false
-                    pruningEnabled: false
-            rollbackSteps:
-              - step:
-                  name: Rollback
-                  identifier: rollback
-                  type: K8sRollingRollback
-                  timeout: 10m
-                  spec:
-                    pruningEnabled: false
-```
-
-### Step 5: Run the Deployment!
-
-1. Click **Run** on the pipeline
-2. Enter the image tag (from your CI build)
-3. Watch Harness:
-   - Connect to your cluster
-   - Apply the Kubernetes manifests
-   - Wait for pods to be healthy
-   - Show you the deployment status
-
-```
-Expected Output:
-════════════════
-✅ Namespace created
-✅ ConfigMap applied
-✅ Secret applied
-✅ Deployment applied (3 replicas)
-✅ Service created
-✅ All pods healthy
-✅ Deployment successful!
-```
-
----
-
-### Step 6: Verify the Deployment
-
-```bash
-# Check pods are running
-kubectl get pods -n harness-course-dev
-
-# Expected:
-# NAME                                  READY   STATUS    RESTARTS   AGE
-# harness-course-app-xxx-aaa            1/1     Running   0          1m
-# harness-course-app-xxx-bbb            1/1     Running   0          1m
-# harness-course-app-xxx-ccc            1/1     Running   0          1m
-
-# Check the service
-kubectl get svc -n harness-course-dev
-
-# Access the app
-curl http://<EXTERNAL-IP>/
-# Output: Hello from Harness CI/CD Course!
-
-curl http://<EXTERNAL-IP>/health
-# Output: OK
-```
-
----
-
-## 🖥️ Demo: Blue-Green Deployment
-
-```yaml
-# Change execution strategy to Blue-Green
-execution:
-  steps:
-    - step:
-        name: Blue-Green Deploy
-        identifier: bg_deploy
-        type: K8sBGSwapServices
-        timeout: 10m
-        spec:
-          skipDryRun: false
-    - step:
-        name: Swap Primary and Stage
-        identifier: swap
-        type: K8sBGSwapServices
-        timeout: 10m
-        spec: {}
-  rollbackSteps:
-    - step:
-        name: BG Rollback
-        identifier: bg_rollback
-        type: K8sBGSwapServices
-        timeout: 10m
-        spec: {}
-```
-
----
-
-## 🖥️ Demo: Canary Deployment
-
-```yaml
-# Canary deployment strategy
-execution:
-  steps:
-    - step:
-        name: Canary 25%
-        identifier: canary_25
-        type: K8sCanaryDeploy
-        timeout: 10m
-        spec:
-          instanceSelection:
-            type: Count
-            spec:
-              count: 1
-          skipDryRun: false
-    - step:
-        name: Verify Canary
-        identifier: verify_canary
-        type: Verify
-        timeout: 15m
-        spec:
-          type: Canary
-          monitoredService:
-            type: Default
-            spec: {}
-          spec:
-            sensitivity: HIGH
-            duration: 5m
-    - step:
-        name: Canary Full
-        identifier: canary_full
-        type: K8sCanaryDeploy
-        timeout: 10m
-        spec:
-          instanceSelection:
-            type: Percentage
-            spec:
-              percentage: 100
-          skipDryRun: false
-    - step:
-        name: Canary Delete
-        identifier: canary_delete
-        type: K8sCanaryDelete
-        timeout: 10m
-        spec: {}
-    - step:
-        name: Rolling Deploy (Full)
-        identifier: rolling
-        type: K8sRollingDeploy
-        timeout: 10m
-        spec:
-          skipDryRun: false
-  rollbackSteps:
-    - step:
-        name: Canary Rollback
-        identifier: canary_rollback
-        type: K8sCanaryDelete
-        timeout: 10m
-        spec: {}
-    - step:
-        name: Rolling Rollback
-        identifier: rolling_rollback
-        type: K8sRollingRollback
-        timeout: 10m
-        spec: {}
+Harness Cloud stages:     Uses access keys (no IAM role)
+Docker Delegate stages:   NO keys (EC2 has IAM Admin Role)
+BuildAndPushECR step:     Uses OIDC connector (no keys)
 ```
 
 ---
 
 ## ✅ Episode 6 Checklist
 
-- [ ] Understand what CD means (deliver the app to users)
-- [ ] Know Kubernetes basics (Pod, Deployment, Service, etc.)
-- [ ] Created Kubernetes manifests for our app
-- [ ] Understand Harness CD concepts (Service, Environment, Infrastructure)
-- [ ] Know all 4 deployment strategies and when to use each
-- [ ] Understand rollback (automatic + manual)
-- [ ] Created a Service in Harness
-- [ ] Created Environments (dev + production)
-- [ ] Created an Infrastructure Definition
-- [ ] Built and ran a CD pipeline
-- [ ] Successfully deployed to Kubernetes
-- [ ] Verified the deployment works
+- [ ] Understand CD (deliver app to users)
+- [ ] Know Kubernetes basics (Namespace, Deployment, Service, ConfigMap, Secret)
+- [ ] Installed Docker Delegate for CD (no --network host, no tags)
+- [ ] Deployed Healthcare website to EC2 via Docker
+- [ ] Know all 4 deployment strategies
+- [ ] Installed Kubernetes Delegate on EKS (from Bastion)
+- [ ] Deployed GoCart to EKS via kubectl
+- [ ] Understand rollback (:stable tag for Docker, rollout undo for K8s)
+- [ ] Tested rollback by breaking deployment.yaml
+- [ ] Understand when rollback triggers vs when pipeline just stops
+
+---
+
+## 🚀 Deployment Steps
+
+### Two Topics in This Episode
+
+| Topic | App | Delegate | Deploy Method | Access |
+|-------|-----|----------|---------------|--------|
+| **Topic 1** | Healthcare Website (HTML/CSS) | Docker Delegate (CD level) on EC2 | `docker run` | `http://EC2-IP` |
+| **Topic 2** | GoCart E-Commerce (Next.js) | Kubernetes Delegate on EKS | `kubectl apply` | `http://LoadBalancer-URL` |
+
+### Docker Delegate for CD (Different from Episode 3!)
+
+```
+Episode 3 (CI):                        Episode 6 (CD):
+─────────────                          ─────────────
+--network host   ✅ (for Runner)       No --network host
+Tags: linux-amd64                      No tags
+Docker Runner (port 3000)              No Runner needed
+Purpose: Build code in containers      Purpose: Deploy containers
+```
+
+### Prerequisites (already done)
+
+| What | Where | Episode | Link |
+|------|-------|---------|------|
+| GitHub connector (`account.Github`) | Account Settings → Connectors | Episode 1 | [Episode 1 — Deploy Steps](../Episode-01/hello-world-app/DEPLOY-STEPS.md) |
+| AWS OIDC connector (`account.aws_account`) | Account Settings → Connectors | Episode 3 | [Episode 3 — Connector Setup](../Episode-03/README.md#connector-3-aws--🆕-create-now) |
+| Secret: `aws_access_key_id` | Project Settings → Secrets | Episode 3 | [Episode 3 — Terraform README](../Episode-03/terraform-project/README.md#step-2-get-aws-access-key--secret-key) |
+| Secret: `aws_secret_access_key` | Project Settings → Secrets | Episode 3 | [Episode 3 — Terraform README](../Episode-03/terraform-project/README.md#step-3-add-secrets-in-harness) |
+| Variable: `aws_account_id` | Project Settings → Variables | Episode 4 | [Episode 4 — Deployment Steps](../Episode-04/README.md#step-1-add-aws-account-id-variable) |
+| Variable: `aws_region` | Project Settings → Variables | Episode 3 | [Episode 3 — Terraform README](../Episode-03/terraform-project/README.md#step-4-add-variables-in-harness) |
+
+### Quick Start
+
+**Topic 1 (Docker CD on EC2):**
+```bash
+# Import pipeline: Episode-06/Health care/.harness/pipeline-docker-cd.yaml
+# Run → Access: http://EC2-PUBLIC-IP
+```
+
+**Topic 2 (Kubernetes CD on EKS):**
+```bash
+# Import pipeline: Episode-06/gocart/.harness/pipeline-k8s-cd.yaml
+# Run → Access: http://LOADBALANCER-URL
+```
+
+See [Health care/DEPLOY-STEPS.md](./Health%20care/DEPLOY-STEPS.md) and [gocart/DEPLOY-STEPS.md](./gocart/DEPLOY-STEPS.md) for full instructions.
+
+---
+
+## Project Structure
+
+```
+Episode-06/
+├── README.md                              ← This file (theory + concepts)
+│
+├── Health care/                           ← TOPIC 1: Docker Delegate CD on EC2
+│   ├── index.html                         ← Static Healthcare website
+│   ├── styles.css                         ← CSS styling
+│   ├── assets/                            ← Images (doctors, projects)
+│   ├── Dockerfile                         ← Nginx serves static files
+│   ├── DEPLOY-STEPS.md                    ← Step-by-step guide
+│   └── .harness/
+│       └── pipeline-docker-cd.yaml        ← Pipeline: ECR → docker run → EC2-IP:80
+│
+└── gocart/                                ← TOPIC 2: Kubernetes Delegate CD on EKS
+    ├── app/                               ← Next.js 15 pages (public, admin, store)
+    ├── components/                        ← React components (Hero, Cart, Products)
+    ├── lib/                               ← Redux store (cart, product, address)
+    ├── prisma/schema.prisma               ← PostgreSQL database schema
+    ├── assets/                            ← Product images
+    ├── package.json                       ← Next.js + React + Redux + Prisma
+    ├── next.config.mjs                    ← Standalone output for Docker
+    ├── Dockerfile                         ← Multi-stage (deps → build → standalone)
+    ├── DEPLOY-STEPS.md                    ← Step-by-step guide
+    ├── k8s/                               ← Kubernetes manifests
+    │   ├── namespace.yaml                 ← gocart namespace
+    │   ├── configmap.yaml                 ← App config (NODE_ENV, PORT)
+    │   ├── secret.yaml                    ← DB credentials (DATABASE_URL)
+    │   ├── postgres.yaml                  ← PostgreSQL 16 (Docker image on K8s)
+    │   ├── deployment.yaml                ← 2 replicas + Rolling + Health probes
+    │   └── service.yaml                   ← LoadBalancer (port 80 → 3000)
+    └── .harness/
+        └── pipeline-k8s-cd.yaml           ← Pipeline: ECR → kubectl apply → LoadBalancer
+```
+
+---
+
+## Pipeline Flow Visualization
+
+### Topic 1: Docker Delegate → EC2
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  TOPIC 1: HEALTHCARE WEBSITE ON EC2                       │
+│                                                           │
+│  Stage 1: Build & Push to ECR (OIDC)                     │
+│  ┌──────────┐  ┌──────────────────┐                     │
+│  │Create ECR│→ │Build+Push (OIDC) │                     │
+│  └──────────┘  └──────────────────┘                     │
+│                     ↓                                     │
+│  Stage 2: Deploy to EC2                                  │
+│  ┌──────────┐  ┌───────────┐  ┌──────────┐             │
+│  │docker run│→ │Health Chk │→ │Tag:stable│             │
+│  │-p 80:80  │  │HTTP 200?  │  │(success) │             │
+│  └──────────┘  └───────────┘  └──────────┘             │
+│                     │                                     │
+│           If fails → Rollback:                           │
+│           Stop → Pull :stable → Start → Verify          │
+│                     ↓                                     │
+│  Stage 3: Approval ⏸️  →  Stage 4: Cleanup              │
+│                                                           │
+│  Access: http://EC2-PUBLIC-IP                            │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Topic 2: Kubernetes Delegate → EKS
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  TOPIC 2: GOCART E-COMMERCE ON EKS                       │
+│                                                           │
+│  Stage 1: Build & Push to ECR (OIDC)                     │
+│  ┌──────────┐  ┌──────────────────┐                     │
+│  │Create ECR│→ │Build+Push (OIDC) │                     │
+│  └──────────┘  └──────────────────┘                     │
+│                     ↓                                     │
+│  Stage 2: Deploy to Kubernetes                           │
+│  ┌───────────────────────────────────────────────┐      │
+│  │ kubectl apply:                                 │      │
+│  │ namespace → configmap → secret → postgres →   │      │
+│  │ wait → deployment → service                    │      │
+│  └───────────────────────┬───────────────────────┘      │
+│                          ↓                               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
+│  │Verify    │→ │Get LB    │→ │Health Chk│              │
+│  │Rollout   │  │URL       │  │HTTP 200? │              │
+│  └──────────┘  └──────────┘  └──────────┘              │
+│                     │                                     │
+│           If fails → Rollback:                           │
+│           rollout undo → history → wait → verify        │
+│                     ↓                                     │
+│  Stage 3: Approval ⏸️  →  Stage 4: Cleanup              │
+│                                                           │
+│  Access: http://LOADBALANCER-URL 🛒                      │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Comparison: Topic 1 vs Topic 2
+
+| | Topic 1: Docker CD (EC2) | Topic 2: Kubernetes CD (EKS) |
+|---|---|---|
+| **App** | Healthcare Website (HTML/CSS) | GoCart E-Commerce (Next.js) |
+| **Delegate** | Docker Delegate (no `--network host`, no tags, no Runner) | Kubernetes Delegate (installed from Bastion) |
+| **Deploy** | `docker run` on EC2 | `kubectl apply` on EKS |
+| **Database** | None (static site) | PostgreSQL (Docker image on K8s) |
+| **Access** | `http://EC2-IP:80` | `http://LOADBALANCER-URL` |
+| **Replicas** | 1 container | 2 pods |
+| **Health Check** | HTTP 200 | readinessProbe + livenessProbe |
+| **Rollback** | `docker stop new → docker start old` | `kubectl rollout undo` |
+| **Best for** | Simple apps, dev/test | Production, scalable apps |
 
 ---
 
 ## 📝 Key Takeaways
 
-1. **CD = Deliver your app to users** (CI builds it, CD delivers it)
-2. **Rolling** = Safe default (zero downtime, one at a time)
-3. **Blue-Green** = Instant switch + instant rollback
-4. **Canary** = Safest (test with small % of users first)
-5. **Always have rollback steps** in your pipeline
-6. **Health checks** are critical (readiness + liveness probes)
+1. **CD = Deliver your app to users** (CI builds it, CD deploys it)
+2. **Docker Delegate for CD** ≠ Docker Delegate for CI (no --network host, no tags, no runner)
+3. **EC2 IAM Role** = no access keys needed in delegate stages
+4. **`:stable` tag** = only updated after health check passes → safe rollback
+5. **`kubectl rollout undo`** = K8s automatic rollback (uses revision history)
+6. **`exit 1`** in health check → triggers rollback section automatically
+7. **Deploy order matters** in K8s: namespace → configmap → secret → postgres → deployment → service
 
 ---
-Harness OIDC connector (aws_account) → Used in Episode 6, 7, 10 for:
+
+## 🧪 How to Test Rollback
+
+### Healthcare Website (Docker on EC2)
+
+| What to Break | Stage 1 | Stage 2 | Rollback? |
+|---------------|---------|---------|-----------|
+| `requirements.txt` (add invalid package) | ❌ Build fails | Never runs | No |
+| `Dockerfile` (bad RUN command) | ❌ Build fails | Never runs | No |
+| **`app.py`** (add `erxtcfgvhbjkmle` between imports) | ✅ Passes (image builds) | ❌ Flask crashes → `/health` no response | **YES ✅** |
+
+**Best test for Healthcare:**
+1. Run pipeline → success → `:stable` tagged ✅
+2. Add garbage text in `app.py` (like `erxtcfgvhbjkmle` on line 5)
+3. Push → Run pipeline
+4. Stage 1: Image builds fine ✅ (Python doesn't check syntax at build time)
+5. Stage 2: Container starts → Flask crashes → `/health` no response → Health check FAILS → **Rollback triggers** → pulls `:stable` → old version back ✅
+
+---
+
+### GoCart (Kubernetes on EKS)
+
+| What to Break | Stage 1 | Stage 2 | Rollback? |
+|---------------|---------|---------|-----------|
+| `package.json` (invalid JSON) | ❌ Build fails | Never runs | No |
+| `Dockerfile` (bad command) | ❌ Build fails | Never runs | No |
+| **`k8s/deployment.yaml`** (invalid YAML) | ✅ Build passes | ❌ kubectl fails | **YES ✅** |
+| **App runtime crash** (bad code) | ✅ Build passes | ❌ Health check fails | **YES ✅** |
+
+**Best test for GoCart:**
+1. Run pipeline → success ✅
+2. Add garbage to `k8s/deployment.yaml` (like `dfghjk: invalid`)
+3. Push → Run pipeline
+4. Stage 1: Image builds fine (code is correct) ✅
+5. Stage 2: `kubectl apply` fails on bad YAML → **Rollback triggers** → `kubectl rollout undo` → previous version restored ✅
+
+---
+
+Harness OIDC connector (aws_account) → Used in Episode 6, 7, 10 for deploying to EKS and pushing to ECR.
 
 > 🎬 Next Episode: [Episode 7 - Helm, Amazon EKS & Amazon ECS Deployment](../Episode-07/README.md)

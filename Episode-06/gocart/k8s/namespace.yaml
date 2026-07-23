@@ -1,0 +1,13 @@
+# ============================================
+# NAMESPACE: Logical isolation for GoCart app
+# Think of it as: A separate floor in an apartment building
+# ============================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gocart
+  labels:
+    app: gocart
+    environment: production
+    managed-by: harness
+    episode: "6"
