@@ -251,6 +251,7 @@ pipeline:
                       Access via LoadBalancer URL (check Stage 2 logs).
 
                       APPROVE to delete. REJECT to keep running.
+                    includePipelineExecutionHistory: true
                     approvers:
                       minimumCount: 1
                       disallowPipelineExecutor: false

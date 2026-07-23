@@ -242,10 +242,11 @@ pipeline:
                   spec:
                     approvalMessage: |-
                       Healthcare website deployed on EC2.
-                      Access: http://EC2-PUBLIC-IP
+                      Access: http://EC2-PUBLIC-IP:5000
 
                       APPROVE to stop container and delete ECR.
                       REJECT to keep running.
+                    includePipelineExecutionHistory: true
                     approvers:
                       minimumCount: 1
                       disallowPipelineExecutor: false
