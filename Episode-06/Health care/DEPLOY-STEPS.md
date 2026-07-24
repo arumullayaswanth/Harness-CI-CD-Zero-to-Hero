@@ -129,7 +129,7 @@ Wait 2 min → **Connected** ✅
 7. Connector: Select `account.aws_account`
 8. Region: Select your region
 9. Host Filter: **Specify hosts** → Enter EC2 public IP
-10. Credentials: Select `ec2-ssh-key` (created in Step 1b)
+10. Credentials: Select `ec2-ssh-key` (created in Step 3b)
 11. Save
 
 ---
