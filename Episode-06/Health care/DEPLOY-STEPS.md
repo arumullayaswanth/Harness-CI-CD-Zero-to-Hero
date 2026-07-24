@@ -27,10 +27,21 @@ Create Service + Environment in Harness UI → Import Pipeline → Run → EC2-I
 2. Name: `harness-cd-delegate`
 3. OS: Amazon Linux 2023
 4. Type: `t2.medium` (2 CPU, 4 GB)
-5. Key pair: Create or use existing
+5. Key pair: Create or use existing → **Download .pem file**
 6. **IAM Role: Attach Admin Role** (Instance Profile)
 7. Security Group: Allow SSH (22) + port 5000
 8. Launch → Wait for Running ✅
+
+---
+
+## Step 1b: Add SSH Key as Secret in Harness
+
+1. Project Settings → **Secrets** → **+ New Secret** → **SSH Credential**
+2. Name: `ec2-ssh-key`
+3. Auth type: **SSH Key**
+4. Username: `ec2-user`
+5. Key: Paste your `.pem` file content
+6. Save
 
 ---
 
@@ -97,11 +108,16 @@ Wait 2 min → **Connected** ✅
 ## Step 5b: Create Infrastructure inside Environment
 
 1. Inside `development` environment → **Infrastructure Definitions** tab
-2. Click **+ New Infrastructure**
+2. Click **+ Infrastructure Definition**
 3. Name: `ec2-docker`
 4. Deployment Type: **Secure Shell**
-5. Select connector or delegate selector: `cd-docker-delegate`
-6. Save
+5. Setup: **Inline**
+6. Infrastructure Type: **AWS**
+7. Connector: Select `account.aws_account`
+8. Region: Select your region
+9. Host Filter: **Specify hosts** → Enter EC2 public IP
+10. Credentials: Select `ec2-ssh-key` (created in Step 1b)
+11. Save
 
 ---
 
