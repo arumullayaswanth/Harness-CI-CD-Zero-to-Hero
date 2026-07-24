@@ -106,6 +106,12 @@ pipeline:
         identifier: deploy_to_kubernetes
         description: "Rolling deployment to EKS cluster"
         type: Deployment
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
         spec:
           deploymentType: Kubernetes
           service:
@@ -232,8 +238,14 @@ pipeline:
         identifier: cleanup
         description: "Delete K8s resources + ECR"
         type: Deployment
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
         spec:
-          deploymentType: Custom
+          deploymentType: CustomDeployment
           service:
             serviceRef: gocart
           environment:

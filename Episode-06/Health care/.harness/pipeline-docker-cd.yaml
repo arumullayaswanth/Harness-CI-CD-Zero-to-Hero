@@ -106,8 +106,14 @@ pipeline:
         identifier: deploy_to_ec2
         description: "Deploy Healthcare website on EC2 via Docker"
         type: Deployment
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
         spec:
-          deploymentType: Custom
+          deploymentType: CustomDeployment
           service:
             # CHANGE THIS: Your service ID (create in CD → Services)
             serviceRef: healthcare_website
@@ -296,8 +302,14 @@ pipeline:
         identifier: cleanup
         description: "Stop container and delete ECR"
         type: Deployment
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
         spec:
-          deploymentType: Custom
+          deploymentType: CustomDeployment
           service:
             serviceRef: healthcare_website
           environment:
