@@ -1,0 +1,63 @@
+# ============================================
+# PIPELINE: Cleanup — Delete GoCart from EKS + ECR
+# ============================================
+# Run this to delete everything deployed by pipeline-k8s-cd.yaml
+# Deletes K8s namespace (all resources) + ECR repository
+# ============================================
+pipeline:
+  name: episode6-gocart-cleanup
+  identifier: episode6_gocart_cleanup
+  projectIdentifier: HarnessCICDZerotoHero
+  orgIdentifier: default
+  tags: {}
+  stages:
+    - stage:
+        name: cleanup
+        identifier: cleanup
+        description: "Delete K8s resources + ECR"
+        type: Deployment
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+        spec:
+          deploymentType: Kubernetes
+          service:
+            serviceRef: gocart
+          environment:
+            environmentRef: development
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: ekscluster
+          execution:
+            steps:
+              - step:
+                  type: ShellScript
+                  name: Delete Namespace
+                  identifier: delete_namespace
+                  spec:
+                    shell: Bash
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          kubectl delete namespace gocart --ignore-not-found=true
+                    onDelegate: true
+                  timeout: 5m
+
+              - step:
+                  type: ShellScript
+                  name: Delete ECR
+                  identifier: delete_ecr
+                  spec:
+                    shell: Bash
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          aws ecr delete-repository --repository-name gocart --force --region <+variable.aws_region> || true
+                    onDelegate: true
+                  timeout: 5m
+            rollbackSteps: []

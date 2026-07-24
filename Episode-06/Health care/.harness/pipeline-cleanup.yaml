@@ -1,0 +1,64 @@
+# ============================================
+# PIPELINE: Cleanup — Delete Healthcare Website + ECR
+# ============================================
+# Run this to delete everything deployed by pipeline-docker-cd.yaml
+# Stops container on EC2 + Deletes ECR repository
+# ============================================
+pipeline:
+  name: episode6-healthcare-cleanup
+  identifier: episode6_healthcare_cleanup
+  projectIdentifier: HarnessCICDZerotoHero
+  orgIdentifier: default
+  tags: {}
+  stages:
+    - stage:
+        name: cleanup
+        identifier: cleanup
+        description: "Stop container and delete ECR"
+        type: Deployment
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
+        spec:
+          deploymentType: Ssh
+          service:
+            serviceRef: healthcarewebsite
+          environment:
+            environmentRef: development
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: ec2docker
+          execution:
+            steps:
+              - step:
+                  type: ShellScript
+                  name: Stop Container
+                  identifier: stop_container
+                  spec:
+                    shell: Bash
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          docker stop healthcare-website 2>/dev/null || true
+                          docker rm healthcare-website 2>/dev/null || true
+                    onDelegate: true
+                  timeout: 5m
+
+              - step:
+                  type: ShellScript
+                  name: Delete ECR
+                  identifier: delete_ecr
+                  spec:
+                    shell: Bash
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          aws ecr delete-repository --repository-name healthcare-website --force --region <+variable.aws_region> || true
+                    onDelegate: true
+                  timeout: 5m
+            rollbackSteps: []
