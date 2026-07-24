@@ -136,6 +136,7 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
+                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
                           IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:<+pipeline.sequenceId>"
 
                           aws ecr get-login-password --region <+variable.aws_region> | docker login --username AWS --password-stdin <+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com
@@ -163,6 +164,7 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
+                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
                           sleep 5
                           HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" http://localhost:5000/health 2>/dev/null || echo "000")
                           if [ "$HTTP_CODE" = "200" ]; then
@@ -184,6 +186,7 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
+                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
                           MANIFEST=$(aws ecr batch-get-image --repository-name healthcare-website --image-ids imageTag=<+pipeline.sequenceId> --region <+variable.aws_region> --query 'images[0].imageManifest' --output text)
                           aws ecr put-image --repository-name healthcare-website --image-tag stable --image-manifest "$MANIFEST" --region <+variable.aws_region> || true
                     onDelegate: false
@@ -203,6 +206,7 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
+                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
                           docker stop healthcare-website 2>/dev/null || true
                           docker rm healthcare-website 2>/dev/null || true
                     onDelegate: false
@@ -218,6 +222,7 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
+                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
                           ROLLBACK_IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:stable"
                           aws ecr get-login-password --region <+variable.aws_region> | docker login --username AWS --password-stdin <+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com
                           docker pull $ROLLBACK_IMAGE || true
@@ -234,6 +239,7 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
+                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
                           ROLLBACK_IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:stable"
                           docker run -d \
                             --name healthcare-website \
@@ -253,6 +259,7 @@ pipeline:
                       type: Inline
                       spec:
                         script: |-
+                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
                           sleep 5
                           HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" http://localhost:5000/health 2>/dev/null || echo "000")
                           if [ "$HTTP_CODE" = "200" ]; then

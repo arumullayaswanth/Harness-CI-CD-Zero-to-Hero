@@ -39,7 +39,7 @@ Create Service + Environment in Harness UI → Import Pipeline → Run → EC2-I
 ```bash
 
 sudo dnf update -y
-sudo dnf install -y docker aws-cli
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && unzip awscliv2.zip && sudo ./aws/install
 sudo systemctl start docker
 sudo systemctl enable docker
 sudo usermod -aG docker $USER
