@@ -16,7 +16,7 @@
 #   connectorRef: account.aws_account         ← Your AWS OIDC connector
 #   serviceRef: gocart                        ← Your service ID (create in CD → Services)
 #   environmentRef: development               ← Your environment ID (create in CD → Environments)
-#   infrastructureDefinitions: eks_cluster    ← Your infra ID (create inside environment)
+#   infrastructureDefinitions: ekscluster    ← Your infra ID (create inside environment)
 #
 # ============================================
 # PREREQUISITES:
@@ -135,7 +135,7 @@ pipeline:
             deployToAll: false
             infrastructureDefinitions:
               # CHANGE THIS: Your infrastructure ID (create inside environment → Kubernetes → Inherit from Delegate)
-              - identifier: eks_cluster
+              - identifier: ekscluster
           execution:
             steps:
               - step:
@@ -252,7 +252,7 @@ pipeline:
             environmentRef: development
             deployToAll: false
             infrastructureDefinitions:
-              - identifier: eks_cluster
+              - identifier: ekscluster
           execution:
             steps:
               - step:

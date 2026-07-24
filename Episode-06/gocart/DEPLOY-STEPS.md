@@ -85,7 +85,7 @@ Wait 2 min → **Connected** ✅
 2. Name: `development`
 3. Type: **Pre-Production**
 4. Inside environment → **+ New Infrastructure**
-5. Name: `eks-cluster`
+5. Name: `eks-cluster` (ID will auto-generate as `ekscluster`)
 6. Type: **Kubernetes**
 7. Connector: **Inherit from Delegate** (select your `eks-k8s-delegate`)
 8. Namespace: `gocart`

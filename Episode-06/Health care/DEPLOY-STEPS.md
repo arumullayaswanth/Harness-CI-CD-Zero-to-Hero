@@ -88,7 +88,7 @@ Wait 2 min → **Connected** ✅
 ## Step 4: Create Service in Harness UI
 
 1. CD → **Services** → **+ New Service**
-2. Name: `healthcare-website`
+2. Name: `healthcare-website` (ID will auto-generate as `healthcarewebsite`)
 3. Setup: **Inline**
 4. Deployment Type: **Secure Shell**
 5. Save
@@ -109,7 +109,7 @@ Wait 2 min → **Connected** ✅
 
 1. Inside `development` environment → **Infrastructure Definitions** tab
 2. Click **+ Infrastructure Definition**
-3. Name: `ec2-docker`
+3. Name: `ec2-docker` (ID will auto-generate as `ec2docker`)
 4. Deployment Type: **Secure Shell**
 5. Setup: **Inline**
 6. Infrastructure Type: **AWS**

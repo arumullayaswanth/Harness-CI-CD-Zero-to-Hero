@@ -14,9 +14,9 @@
 #   connectorRef: account.Github              ← Your GitHub connector
 #   repoName: Harness-CI-CD-Zero-to-Hero      ← Your repo name
 #   connectorRef: account.aws_account         ← Your AWS OIDC connector
-#   serviceRef: healthcare_website            ← Your service ID (create in CD → Services)
+#   serviceRef: healthcarewebsite            ← Your service ID (create in CD → Services)
 #   environmentRef: development               ← Your environment ID (create in CD → Environments)
-#   infrastructureDefinitions: ec2_docker     ← Your infra ID (create inside environment)
+#   infrastructureDefinitions: ec2docker       ← Your infra ID (create inside environment)
 #
 # ============================================
 # PREREQUISITES:
@@ -116,14 +116,14 @@ pipeline:
           deploymentType: Ssh
           service:
             # CHANGE THIS: Your service ID (create in CD → Services)
-            serviceRef: healthcare_website
+            serviceRef: healthcarewebsite
           environment:
             # CHANGE THIS: Your environment ID (create in CD → Environments)
             environmentRef: development
             deployToAll: false
             infrastructureDefinitions:
               # CHANGE THIS: Your infrastructure ID (create inside environment)
-              - identifier: ec2_docker
+              - identifier: ec2docker
           execution:
             steps:
               - step:
@@ -311,12 +311,12 @@ pipeline:
         spec:
           deploymentType: Ssh
           service:
-            serviceRef: healthcare_website
+            serviceRef: healthcarewebsite
           environment:
             environmentRef: development
             deployToAll: false
             infrastructureDefinitions:
-              - identifier: ec2_docker
+              - identifier: ec2docker
           execution:
             steps:
               - step:
