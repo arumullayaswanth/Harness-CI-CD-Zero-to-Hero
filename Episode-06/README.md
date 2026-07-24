@@ -49,10 +49,20 @@ Deploy v2 → Health check FAILS → exit 1 → Rollback auto-triggers
 ### 5. Authentication Pattern
 
 ```
-Harness Cloud stages:     Uses access keys (no IAM role)
-Docker Delegate stages:   NO keys (EC2 has IAM Admin Role)
-BuildAndPushECR step:     Uses OIDC connector (no keys)
+Stage 1 (Harness Cloud):
+  ├── Create ECR Repo     → Access keys (aws-cli on Harness Cloud needs them)
+  └── BuildAndPushECR     → OIDC connector (no keys!) ✅
+
+Stage 2 (EC2 via SSH / K8s Delegate):
+  └── All steps           → EC2 IAM Role / K8s Delegate (no keys!) ✅
 ```
+
+| Step | Auth Method | Why |
+|------|-------------|-----|
+| `Create ECR Repo` (Run step) | Access keys | Harness Cloud can't use OIDC for aws-cli env vars |
+| `BuildAndPushECR` (native step) | OIDC connector | Harness native step supports OIDC directly |
+| `Deploy Container` (ShellScript) | EC2 IAM Role | Runs on EC2 via SSH, IAM role provides credentials |
+| `kubectl apply` (ShellScript) | K8s Delegate | Delegate is inside EKS, has cluster access |
 
 ### 6. onDelegate: true vs false (ShellScript steps)
 
