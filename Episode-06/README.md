@@ -54,6 +54,19 @@ Docker Delegate stages:   NO keys (EC2 has IAM Admin Role)
 BuildAndPushECR step:     Uses OIDC connector (no keys)
 ```
 
+### 6. onDelegate: true vs false (ShellScript steps)
+
+| | `onDelegate: true` | `onDelegate: false` |
+|---|---|---|
+| **Where script runs** | Inside delegate container | On the target host (via SSH) |
+| **Has docker/aws?** | No (delegate is bare Java container) | Yes (EC2 host has everything installed) |
+| **Needs SSH credential?** | No | Yes (uses infrastructure SSH config) |
+| **Use case** | K8s delegate (has kubectl) | EC2/VM deployments (Secure Shell type) |
+
+**Rule:**
+- Secure Shell (`Ssh`) deployment → `onDelegate: false` (run on EC2 via SSH)
+- Kubernetes deployment → `onDelegate: true` (run inside K8s delegate, has kubectl)
+
 ---
 
 ## ✅ Episode 6 Checklist

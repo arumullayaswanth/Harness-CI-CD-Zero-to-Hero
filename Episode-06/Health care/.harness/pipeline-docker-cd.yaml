@@ -150,7 +150,7 @@ pipeline:
                             -p 5000:5000 \
                             --restart unless-stopped \
                             $IMAGE
-                    onDelegate: true
+                    onDelegate: false
                   timeout: 10m
 
               - step:
@@ -171,7 +171,7 @@ pipeline:
                             echo "Health check FAILED (HTTP $HTTP_CODE)"
                             exit 1
                           fi
-                    onDelegate: true
+                    onDelegate: false
                   timeout: 5m
 
               - step:
@@ -186,7 +186,7 @@ pipeline:
                         script: |-
                           MANIFEST=$(aws ecr batch-get-image --repository-name healthcare-website --image-ids imageTag=<+pipeline.sequenceId> --region <+variable.aws_region> --query 'images[0].imageManifest' --output text)
                           aws ecr put-image --repository-name healthcare-website --image-tag stable --image-manifest "$MANIFEST" --region <+variable.aws_region> || true
-                    onDelegate: true
+                    onDelegate: false
                   timeout: 5m
 
             # ============================================
@@ -205,7 +205,7 @@ pipeline:
                         script: |-
                           docker stop healthcare-website 2>/dev/null || true
                           docker rm healthcare-website 2>/dev/null || true
-                    onDelegate: true
+                    onDelegate: false
                   timeout: 5m
 
               - step:
@@ -221,7 +221,7 @@ pipeline:
                           ROLLBACK_IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:stable"
                           aws ecr get-login-password --region <+variable.aws_region> | docker login --username AWS --password-stdin <+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com
                           docker pull $ROLLBACK_IMAGE || true
-                    onDelegate: true
+                    onDelegate: false
                   timeout: 5m
 
               - step:
@@ -240,7 +240,7 @@ pipeline:
                             -p 5000:5000 \
                             --restart unless-stopped \
                             $ROLLBACK_IMAGE || true
-                    onDelegate: true
+                    onDelegate: false
                   timeout: 5m
 
               - step:
@@ -261,5 +261,5 @@ pipeline:
                             echo "Rollback failed (HTTP $HTTP_CODE)"
                             exit 1
                           fi
-                    onDelegate: true
+                    onDelegate: false
                   timeout: 5m
