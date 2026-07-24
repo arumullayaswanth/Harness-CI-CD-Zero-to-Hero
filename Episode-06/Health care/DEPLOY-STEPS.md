@@ -38,16 +38,38 @@ Create Service + Environment in Harness UI → Import Pipeline → Run → EC2-I
 
 ```bash
 
+# Update system packages
 sudo dnf update -y
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && unzip awscliv2.zip && sudo ./aws/install
+
+# Install Docker
+sudo dnf install -y docker
+
+# Install AWS CLI v2
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip -o awscliv2.zip
+sudo ./aws/install --update
+
+# Start and enable Docker
 sudo systemctl start docker
 sudo systemctl enable docker
+
+# Add user to docker group (allows running docker without sudo)
 sudo usermod -aG docker $USER
-newgrp docker
+sudo usermod -aG docker ec2-user
 
 # Fix PATH for Harness SSH deployments (non-interactive shell)
-echo 'export PATH=/usr/bin:/usr/local/bin:$PATH' | sudo tee /etc/profile.d/harness-path.sh
+echo 'export PATH=/usr/local/bin:/usr/bin:/bin:$PATH' | sudo tee /etc/profile.d/harness-path.sh
 sudo chmod +x /etc/profile.d/harness-path.sh
+
+# Apply docker group immediately (for current session)
+newgrp docker
+
+# Verify installations
+docker --version
+aws --version
+
+# Reboot to apply group changes properly
+sudo reboot
 
 ```
 

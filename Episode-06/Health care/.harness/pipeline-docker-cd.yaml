@@ -2,9 +2,7 @@
 # PIPELINE: Episode 6, Topic 1 — Deploy Healthcare Website to EC2
 # ============================================
 # Stage 1: Build & Push to ECR (CI stage, Harness Cloud)
-# Stage 2: Deploy to EC2 (CD Deployment stage, Docker Delegate)
-# Stage 3: Approval
-# Stage 4: Cleanup
+# Stage 2: Deploy to EC2 (CD Deployment stage, SSH into EC2)
 #
 # ============================================
 # CHANGE THESE VALUES:
@@ -14,9 +12,9 @@
 #   connectorRef: account.Github              ← Your GitHub connector
 #   repoName: Harness-CI-CD-Zero-to-Hero      ← Your repo name
 #   connectorRef: account.aws_account         ← Your AWS OIDC connector
-#   serviceRef: healthcarewebsite            ← Your service ID (create in CD → Services)
-#   environmentRef: development               ← Your environment ID (create in CD → Environments)
-#   infrastructureDefinitions: ec2docker       ← Your infra ID (create inside environment)
+#   serviceRef: healthcarewebsite             ← Your service ID
+#   environmentRef: development               ← Your environment ID
+#   infrastructureDefinitions: ec2docker      ← Your infra ID
 #
 # ============================================
 # PREREQUISITES:
@@ -27,16 +25,16 @@
 #   4. Secret: aws_secret_access_key - Episode 3
 #   5. Variable: aws_account_id - Episode 4
 #   6. Variable: aws_region - Episode 3
-#   7. EC2 with Docker + IAM Admin Role + CD Delegate
+#   7. EC2 with Docker + AWS CLI + IAM Admin Role
 #   8. EC2 Security Group: Allow port 5000 inbound
-#   9. Service: healthcare_website (create in Harness CD → Services → Custom type)
-#  10. Environment: development (create in Harness CD → Environments → Pre-Production)
-#  11. Infrastructure: ec2_docker (create inside environment → Custom → delegate selector)
+#   9. Service: healthcarewebsite (CD → Services → Secure Shell)
+#  10. Environment: development (CD → Environments → Pre-Production)
+#  11. Infrastructure: ec2docker (inside environment → AWS → SSH credential)
 # ============================================
 pipeline:
   name: episode6-healthcare-docker-cd
   identifier: episode6_healthcare_docker_cd
-  # CHANGE THIS: Your project ID (find in URL after /projects/)
+  # CHANGE THIS: Your project ID
   projectIdentifier: HarnessCICDZerotoHero
   # CHANGE THIS: Your org name
   orgIdentifier: default
@@ -79,8 +77,7 @@ pipeline:
                       AWS_ACCESS_KEY_ID: <+secrets.getValue("aws_access_key_id")>
                       AWS_SECRET_ACCESS_KEY: <+secrets.getValue("aws_secret_access_key")>
                       AWS_DEFAULT_REGION: <+variable.aws_region>
-                    command: |-
-                      aws ecr create-repository --repository-name healthcare-website --region <+variable.aws_region> 2>/dev/null || echo "Repository already exists"
+                    command: aws ecr create-repository --repository-name healthcare-website --region <+variable.aws_region> 2>/dev/null || echo "Repository already exists"
 
               - step:
                   type: BuildAndPushECR
@@ -104,169 +101,224 @@ pipeline:
     - stage:
         name: deploy-to-ec2
         identifier: deploy_to_ec2
-        description: "Deploy Healthcare website on EC2 via Docker"
+        description: "Deploy Healthcare website on EC2 via SSH"
         type: Deployment
-        failureStrategies:
-          - onFailure:
-              errors:
-                - AllErrors
-              action:
-                type: StageRollback
         spec:
           deploymentType: Ssh
           service:
-            # CHANGE THIS: Your service ID (create in CD → Services)
+            # CHANGE THIS: Your service ID
             serviceRef: healthcarewebsite
           environment:
-            # CHANGE THIS: Your environment ID (create in CD → Environments)
+            # CHANGE THIS: Your environment ID
             environmentRef: development
-            deployToAll: false
             infrastructureDefinitions:
-              # CHANGE THIS: Your infrastructure ID (create inside environment)
+              # CHANGE THIS: Your infrastructure ID
               - identifier: ec2docker
           execution:
             steps:
               - step:
-                  type: ShellScript
+                  type: Command
                   name: Deploy Container
                   identifier: deploy_container
                   spec:
-                    shell: Bash
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
-                          IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:<+pipeline.sequenceId>"
-
-                          aws ecr get-login-password --region <+variable.aws_region> | docker login --username AWS --password-stdin <+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com
-
-                          docker stop healthcare-website 2>/dev/null || true
-                          docker rm healthcare-website 2>/dev/null || true
-
-                          docker pull $IMAGE
-
-                          docker run -d \
-                            --name healthcare-website \
-                            -p 5000:5000 \
-                            --restart unless-stopped \
-                            $IMAGE
                     onDelegate: false
+                    shell: Bash
+                    commandUnits:
+                      - identifier: Deploy
+                        name: Deploy
+                        type: Script
+                        spec:
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |
+                                IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:<+pipeline.sequenceId>"
+
+                                aws ecr get-login-password --region <+variable.aws_region> | docker login --username AWS --password-stdin <+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com
+
+                                docker stop healthcare-website 2>/dev/null || true
+                                docker rm healthcare-website 2>/dev/null || true
+
+                                docker pull $IMAGE
+
+                                docker run -d \
+                                  --name healthcare-website \
+                                  -p 5000:5000 \
+                                  --restart unless-stopped \
+                                  $IMAGE
                   timeout: 10m
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
 
               - step:
-                  type: ShellScript
+                  type: Command
                   name: Health Check
                   identifier: health_check
                   spec:
-                    shell: Bash
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
-                          sleep 5
-                          HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" http://localhost:5000/health 2>/dev/null || echo "000")
-                          if [ "$HTTP_CODE" = "200" ]; then
-                            echo "Health check PASSED (HTTP 200)"
-                          else
-                            echo "Health check FAILED (HTTP $HTTP_CODE)"
-                            exit 1
-                          fi
                     onDelegate: false
+                    shell: Bash
+                    commandUnits:
+                      - identifier: Health
+                        name: Health
+                        type: Script
+                        spec:
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |
+                                sleep 5
+                                HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" http://localhost:5000/health 2>/dev/null || echo "000")
+                                if [ "$HTTP_CODE" = "200" ]; then
+                                  echo "Health check PASSED (HTTP 200)"
+                                else
+                                  echo "Health check FAILED (HTTP $HTTP_CODE)"
+                                  exit 1
+                                fi
                   timeout: 5m
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
 
               - step:
-                  type: ShellScript
+                  type: Command
                   name: Tag as Stable
                   identifier: tag_stable
                   spec:
-                    shell: Bash
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
-                          MANIFEST=$(aws ecr batch-get-image --repository-name healthcare-website --image-ids imageTag=<+pipeline.sequenceId> --region <+variable.aws_region> --query 'images[0].imageManifest' --output text)
-                          aws ecr put-image --repository-name healthcare-website --image-tag stable --image-manifest "$MANIFEST" --region <+variable.aws_region> || true
                     onDelegate: false
+                    shell: Bash
+                    commandUnits:
+                      - identifier: TagStable
+                        name: TagStable
+                        type: Script
+                        spec:
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |
+                                MANIFEST=$(aws ecr batch-get-image --repository-name healthcare-website --image-ids imageTag=<+pipeline.sequenceId> --region <+variable.aws_region> --query 'images[0].imageManifest' --output text)
+                                aws ecr put-image --repository-name healthcare-website --image-tag stable --image-manifest "$MANIFEST" --region <+variable.aws_region> || true
                   timeout: 5m
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
 
             # ============================================
             # ROLLBACK (auto-triggered on deploy failure)
             # ============================================
             rollbackSteps:
               - step:
-                  type: ShellScript
+                  type: Command
                   name: Stop Failed Deployment
                   identifier: stop_failed
-                  spec:
-                    shell: Bash
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
-                          docker stop healthcare-website 2>/dev/null || true
-                          docker rm healthcare-website 2>/dev/null || true
-                    onDelegate: false
                   timeout: 5m
+                  spec:
+                    onDelegate: false
+                    shell: Bash
+                    commandUnits:
+                      - identifier: Stop
+                        name: Stop
+                        type: Script
+                        spec:
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |
+                                docker stop healthcare-website 2>/dev/null || true
+                                docker rm healthcare-website 2>/dev/null || true
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
 
               - step:
-                  type: ShellScript
+                  type: Command
                   name: Restore Last Successful Build
                   identifier: restore_last
-                  spec:
-                    shell: Bash
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
-                          ROLLBACK_IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:stable"
-                          aws ecr get-login-password --region <+variable.aws_region> | docker login --username AWS --password-stdin <+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com
-                          docker pull $ROLLBACK_IMAGE || true
-                    onDelegate: false
                   timeout: 5m
+                  spec:
+                    onDelegate: false
+                    shell: Bash
+                    commandUnits:
+                      - identifier: Restore
+                        name: Restore
+                        type: Script
+                        spec:
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |
+                                ROLLBACK_IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:stable"
+                                aws ecr get-login-password --region <+variable.aws_region> | docker login --username AWS --password-stdin <+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com
+                                docker pull $ROLLBACK_IMAGE || true
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
 
               - step:
-                  type: ShellScript
+                  type: Command
                   name: Start Previous Version
                   identifier: start_previous
-                  spec:
-                    shell: Bash
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
-                          ROLLBACK_IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:stable"
-                          docker run -d \
-                            --name healthcare-website \
-                            -p 5000:5000 \
-                            --restart unless-stopped \
-                            $ROLLBACK_IMAGE || true
-                    onDelegate: false
                   timeout: 5m
+                  spec:
+                    onDelegate: false
+                    shell: Bash
+                    commandUnits:
+                      - identifier: Start
+                        name: Start
+                        type: Script
+                        spec:
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |
+                                ROLLBACK_IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/healthcare-website:stable"
+                                docker run -d \
+                                  --name healthcare-website \
+                                  -p 5000:5000 \
+                                  --restart unless-stopped \
+                                  $ROLLBACK_IMAGE || true
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
 
               - step:
-                  type: ShellScript
+                  type: Command
                   name: Rollback Health Check
                   identifier: rollback_health
-                  spec:
-                    shell: Bash
-                    source:
-                      type: Inline
-                      spec:
-                        script: |-
-                          export PATH=/usr/local/bin:/usr/bin:/usr/sbin:$PATH
-                          sleep 5
-                          HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" http://localhost:5000/health 2>/dev/null || echo "000")
-                          if [ "$HTTP_CODE" = "200" ]; then
-                            echo "Rollback successful (HTTP 200)"
-                          else
-                            echo "Rollback failed (HTTP $HTTP_CODE)"
-                            exit 1
-                          fi
-                    onDelegate: false
                   timeout: 5m
+                  spec:
+                    onDelegate: false
+                    shell: Bash
+                    commandUnits:
+                      - identifier: Health
+                        name: Health
+                        type: Script
+                        spec:
+                          shell: Bash
+                          source:
+                            type: Inline
+                            spec:
+                              script: |
+                                sleep 5
+                                HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" http://localhost:5000/health 2>/dev/null || echo "000")
+                                if [ "$HTTP_CODE" = "200" ]; then
+                                  echo "Rollback successful (HTTP 200)"
+                                else
+                                  echo "Rollback failed (HTTP $HTTP_CODE)"
+                                  exit 1
+                                fi
+                  strategy:
+                    repeat:
+                      items: <+stage.output.hosts>
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: StageRollback
