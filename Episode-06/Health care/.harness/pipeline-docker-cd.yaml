@@ -113,7 +113,7 @@ pipeline:
               action:
                 type: StageRollback
         spec:
-          deploymentType: CustomDeployment
+          deploymentType: Ssh
           service:
             # CHANGE THIS: Your service ID (create in CD → Services)
             serviceRef: healthcare_website
@@ -309,7 +309,7 @@ pipeline:
               action:
                 type: StageRollback
         spec:
-          deploymentType: CustomDeployment
+          deploymentType: Ssh
           service:
             serviceRef: healthcare_website
           environment:
