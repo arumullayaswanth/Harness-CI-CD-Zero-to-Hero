@@ -63,6 +63,32 @@ BuildAndPushECR step:     Uses OIDC connector (no keys)
 | **Needs SSH credential?** | No | Yes (uses infrastructure SSH config) |
 | **Use case** | K8s delegate (has kubectl) | EC2/VM deployments (Secure Shell type) |
 
+**`onDelegate: false` flow (Healthcare — EC2):**
+```
+Harness Cloud
+    ↓ sends task
+Docker Delegate (on EC2)
+    ↓ delegate doesn't run script itself
+    ↓ instead, SSHs into target host (using SSH credential)
+    ↓
+EC2 Host (script runs here)
+    → has docker ✅
+    → has aws-cli ✅
+    → docker run, docker stop, etc.
+```
+
+**`onDelegate: true` flow (GoCart — EKS):**
+```
+Harness Cloud
+    ↓ sends task
+K8s Delegate (inside EKS cluster)
+    ↓ delegate runs script inside its own container
+    ↓
+Delegate Container (script runs here)
+    → has kubectl ✅ (pre-installed in K8s delegate)
+    → kubectl apply, kubectl rollout, etc.
+```
+
 **Rule:**
 - Secure Shell (`Ssh`) deployment → `onDelegate: false` (run on EC2 via SSH)
 - Kubernetes deployment → `onDelegate: true` (run inside K8s delegate, has kubectl)
