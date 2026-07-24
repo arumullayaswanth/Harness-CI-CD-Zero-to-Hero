@@ -34,17 +34,6 @@ Create Service + Environment in Harness UI → Import Pipeline → Run → EC2-I
 
 ---
 
-## Step 1b: Add SSH Key as Secret in Harness
-
-1. Project Settings → **Secrets** → **+ New Secret** → **SSH Credential**
-2. Name: `ec2-ssh-key`
-3. Auth type: **SSH Key**
-4. Username: `ec2-user`
-5. Key: Paste your `.pem` file content
-6. Save
-
----
-
 ## Step 2: SSH into EC2 + Install Docker
 
 ```bash
@@ -82,6 +71,29 @@ docker run -d --cpus=1 --memory=2g \
 **NO `--network host`, NO tags, NO Runner!**
 
 Wait 2 min → **Connected** ✅
+
+---
+
+## Step 3b: Add SSH Key as Secret + Verify Connection
+
+1. Harness → Project Settings → **Secrets** → **+ New Secret** → **SSH Credential**
+2. **SSH Details:**
+   - Name: `ec2-ssh-key`
+   - Save and Continue
+3. **Configuration:**
+   - Auth Scheme: **SSH Key**
+   - Authentication: **Username/SSH Key**
+   - Username: `ec2-user`
+   - Select or create SSH Key: Click **Create or Select a Secret** → **+ New Secret File**
+     - Secret Name: `ec2-pem-key`
+     - Upload: Select your `.pem` file
+     - Save
+   - Select `ec2-pem-key`
+   - SSH Port: `22`
+4. Click **Save and Continue**
+5. Verify Connection:
+   - Enter Host Name: Your EC2 public IP
+   - Click **Test Connection** → ✅
 
 ---
 
