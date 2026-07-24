@@ -78,8 +78,9 @@ Wait 2 min → **Connected** ✅
 
 1. CD → **Services** → **+ New Service**
 2. Name: `healthcare-website`
-3. Deployment Type: **Custom**
-4. Save
+3. Setup: **Inline**
+4. Deployment Type: **Custom Deployment**
+5. Save
 
 ---
 
