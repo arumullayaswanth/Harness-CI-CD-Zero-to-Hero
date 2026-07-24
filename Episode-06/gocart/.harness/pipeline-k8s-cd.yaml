@@ -1,38 +1,57 @@
 # ============================================
 # PIPELINE: Episode 6, Topic 2 — Deploy GoCart to EKS
 # ============================================
-# Build → Push ECR → Deploy K8s (Rolling) → Approval → Cleanup
+# Stage 1: Build & Push to ECR (CI stage, Harness Cloud)
+# Stage 2: Deploy to EKS (CD Deployment stage, K8s Delegate)
+# Stage 3: Approval
+# Stage 4: Cleanup
 #
-# AUTHENTICATION:
-#   Stage 1 (Harness Cloud): Uses access keys (Harness Cloud has no IAM role)
-#   Stage 2 (Docker Delegate on EC2): NO keys needed! EC2 has IAM Admin Role
-#   Stage 4 (Docker Delegate on EC2): NO keys needed! Same EC2
+# ============================================
+# CHANGE THESE VALUES:
+# ============================================
+#   projectIdentifier: HarnessCICDZerotoHero  ← Your project ID
+#   orgIdentifier: default                    ← Your org name
+#   connectorRef: account.Github              ← Your GitHub connector
+#   repoName: Harness-CI-CD-Zero-to-Hero      ← Your repo name
+#   connectorRef: account.aws_account         ← Your AWS OIDC connector
+#   serviceRef: gocart                        ← Your service ID (create in CD → Services)
+#   environmentRef: development               ← Your environment ID (create in CD → Environments)
+#   infrastructureDefinitions: eks_cluster    ← Your infra ID (create inside environment)
 #
+# ============================================
 # PREREQUISITES:
+# ============================================
 #   1. account.Github connector - Episode 1
 #   2. account.aws_account OIDC connector - Episode 3
-#   3. Secret: aws_access_key_id - Episode 3 (only for Harness Cloud stages)
-#   4. Secret: aws_secret_access_key - Episode 3 (only for Harness Cloud stages)
+#   3. Secret: aws_access_key_id - Episode 3
+#   4. Secret: aws_secret_access_key - Episode 3
 #   5. Variable: aws_account_id - Episode 4
-#   6. EKS cluster (GitHub Actions infra.yml)
-#   7. EC2 with IAM Admin Role + Docker Delegate (kubectl access to EKS)
+#   6. Variable: aws_region - Episode 3
+#   7. EKS cluster (GitHub Actions infra.yml)
+#   8. Kubernetes Delegate installed on EKS
+#   9. Service: gocart (create in Harness CD → Services → Kubernetes type → Manifests from Git + ECR artifact)
+#  10. Environment: development (reuse from Topic 1)
+#  11. Infrastructure: eks_cluster (create inside environment → Kubernetes → Inherit from Delegate)
 # ============================================
 pipeline:
   name: episode6-gocart-k8s-cd
   identifier: episode6_gocart_k8s_cd
+  # CHANGE THIS: Your project ID (find in URL after /projects/)
   projectIdentifier: HarnessCICDZerotoHero
+  # CHANGE THIS: Your org name
   orgIdentifier: default
   tags: {}
   properties:
     ci:
       codebase:
+        # CHANGE THIS: Your GitHub connector
         connectorRef: account.Github
+        # CHANGE THIS: Your repo name
         repoName: Harness-CI-CD-Zero-to-Hero
         build: <+input>
   stages:
     # ============================================
-    # STAGE 1: Build & Push to ECR (Harness Cloud)
-    # NOTE: Harness Cloud needs access keys (no IAM role)
+    # STAGE 1: Build & Push to ECR (CI stage)
     # ============================================
     - stage:
         name: build-and-push
@@ -68,6 +87,7 @@ pipeline:
                   name: Build and Push to ECR
                   identifier: build_push_ecr
                   spec:
+                    # CHANGE THIS: Your AWS OIDC connector
                     connectorRef: account.aws_account
                     region: <+variable.aws_region>
                     account: <+variable.aws_account_id>
@@ -79,155 +99,101 @@ pipeline:
                     context: Episode-06/gocart
 
     # ============================================
-    # STAGE 2: Deploy to Kubernetes (Docker Delegate on EC2)
-    # NOTE: EC2 has IAM Admin Role — NO access keys needed!
-    # kubectl gets credentials from EC2 instance metadata
+    # STAGE 2: Deploy to EKS (CD Deployment stage)
     # ============================================
     - stage:
         name: deploy-to-kubernetes
         identifier: deploy_to_kubernetes
         description: "Rolling deployment to EKS cluster"
-        type: CI
+        type: Deployment
         spec:
-          cloneCodebase: true
-          platform:
-            os: Linux
-            arch: Amd64
-          runtime:
-            type: Docker
-            spec: {}
+          deploymentType: Kubernetes
+          service:
+            # CHANGE THIS: Your service ID (create in CD → Services → Kubernetes type)
+            serviceRef: gocart
+            serviceInputs:
+              serviceDefinition:
+                type: Kubernetes
+                spec:
+                  artifacts:
+                    primary:
+                      primaryArtifactRef: ecr_image
+                      sources:
+                        - identifier: ecr_image
+                          type: Ecr
+                          spec:
+                            tag: <+pipeline.sequenceId>
+          environment:
+            # CHANGE THIS: Your environment ID (create in CD → Environments)
+            environmentRef: development
+            deployToAll: false
+            infrastructureDefinitions:
+              # CHANGE THIS: Your infrastructure ID (create inside environment → Kubernetes → Inherit from Delegate)
+              - identifier: eks_cluster
           execution:
             steps:
               - step:
-                  type: Run
-                  name: Deploy Manifests
-                  identifier: deploy_manifests
+                  name: Rolling Deployment
+                  identifier: rolling_deploy
+                  type: K8sRollingDeploy
+                  timeout: 10m
                   spec:
-                    shell: Sh
-                    image: amazon/aws-cli:latest
-                    command: |-
-                      curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                      chmod +x kubectl && mv kubectl /usr/local/bin/
-                      aws eks update-kubeconfig --region <+variable.aws_region> --name harness-eks-cluster
-
-                      IMAGE="<+variable.aws_account_id>.dkr.ecr.<+variable.aws_region>.amazonaws.com/gocart:<+pipeline.sequenceId>"
-                      cd Episode-06/gocart/k8s
-
-                      kubectl apply -f namespace.yaml
-                      kubectl apply -f configmap.yaml
-                      kubectl apply -f secret.yaml
-                      kubectl apply -f postgres.yaml
-                      kubectl wait --for=condition=ready pod -l app=postgres -n gocart --timeout=90s
-                      sed "s|<+artifact.image>|$IMAGE|g" deployment.yaml | kubectl apply -f -
-                      kubectl apply -f service.yaml
+                    skipDryRun: false
+                    pruningEnabled: false
 
               - step:
-                  type: Run
-                  name: Verify Rollout
-                  identifier: verify_rollout
+                  type: ShellScript
+                  name: Verify Deployment
+                  identifier: verify_deployment
                   spec:
-                    shell: Sh
-                    image: amazon/aws-cli:latest
-                    command: |-
-                      curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                      chmod +x kubectl && mv kubectl /usr/local/bin/
-                      aws eks update-kubeconfig --region <+variable.aws_region> --name harness-eks-cluster
-
-                      kubectl rollout status deployment/gocart -n gocart --timeout=180s
-                      kubectl get pods -n gocart
-                      kubectl get svc gocart -n gocart
-
-                      for i in $(seq 1 18); do
-                        LB=$(kubectl get svc gocart -n gocart -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
-                        [ -n "$LB" ] && break
-                        sleep 10
-                      done
-                      echo "LoadBalancer: http://$LB"
+                    shell: Bash
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          kubectl get pods -n gocart
+                          kubectl get svc gocart -n gocart
+                          LB=$(kubectl get svc gocart -n gocart -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pending")
+                          echo "LoadBalancer: http://$LB"
+                    onDelegate: true
+                  timeout: 5m
 
               - step:
-                  type: Run
+                  type: ShellScript
                   name: Health Check
                   identifier: health_check
                   spec:
-                    shell: Sh
-                    image: amazon/aws-cli:latest
-                    command: |-
-                      curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                      chmod +x kubectl && mv kubectl /usr/local/bin/
-                      aws eks update-kubeconfig --region <+variable.aws_region> --name harness-eks-cluster
+                    shell: Bash
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          LB=$(kubectl get svc gocart -n gocart -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+                          for i in $(seq 1 18); do
+                            HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" http://$LB/ 2>/dev/null || echo "000")
+                            [ "$HTTP_CODE" = "200" ] && break
+                            sleep 10
+                          done
+                          if [ "$HTTP_CODE" = "200" ]; then
+                            echo "Health check PASSED (HTTP 200)"
+                          else
+                            echo "Health check FAILED (HTTP $HTTP_CODE)"
+                            exit 1
+                          fi
+                    onDelegate: true
+                  timeout: 5m
 
-                      LB=$(kubectl get svc gocart -n gocart -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
-                      HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" http://$LB/ 2>/dev/null || echo "000")
-                      if [ "$HTTP_CODE" = "200" ]; then
-                        echo "Health check PASSED (HTTP 200)"
-                      else
-                        echo "Health check: HTTP $HTTP_CODE"
-                        exit 1
-                      fi
-
-          # ============================================
-          # ROLLBACK (auto-triggered on deploy failure)
-          # EC2 has IAM role — no keys needed
-          # ============================================
-          rollback:
-            steps:
+            # ============================================
+            # ROLLBACK (auto-triggered on deploy failure)
+            # ============================================
+            rollbackSteps:
               - step:
-                  type: Run
-                  name: Stop Failed Deployment
-                  identifier: stop_failed
+                  name: Rollback
+                  identifier: rollback
+                  type: K8sRollingRollback
+                  timeout: 10m
                   spec:
-                    shell: Sh
-                    image: amazon/aws-cli:latest
-                    command: |-
-                      curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                      chmod +x kubectl && mv kubectl /usr/local/bin/
-                      aws eks update-kubeconfig --region <+variable.aws_region> --name harness-eks-cluster
-                      kubectl rollout undo deployment/gocart -n gocart
-
-              - step:
-                  type: Run
-                  name: Restore Last Successful Build
-                  identifier: restore_last
-                  spec:
-                    shell: Sh
-                    image: amazon/aws-cli:latest
-                    command: |-
-                      curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                      chmod +x kubectl && mv kubectl /usr/local/bin/
-                      aws eks update-kubeconfig --region <+variable.aws_region> --name harness-eks-cluster
-                      kubectl rollout history deployment/gocart -n gocart
-
-              - step:
-                  type: Run
-                  name: Start Previous Version
-                  identifier: start_previous
-                  spec:
-                    shell: Sh
-                    image: amazon/aws-cli:latest
-                    command: |-
-                      curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                      chmod +x kubectl && mv kubectl /usr/local/bin/
-                      aws eks update-kubeconfig --region <+variable.aws_region> --name harness-eks-cluster
-                      kubectl rollout status deployment/gocart -n gocart --timeout=120s
-
-              - step:
-                  type: Run
-                  name: Rollback Health Check
-                  identifier: rollback_health
-                  spec:
-                    shell: Sh
-                    image: amazon/aws-cli:latest
-                    command: |-
-                      curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                      chmod +x kubectl && mv kubectl /usr/local/bin/
-                      aws eks update-kubeconfig --region <+variable.aws_region> --name harness-eks-cluster
-                      READY=$(kubectl get deployment gocart -n gocart -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
-                      if [ "$READY" -ge "1" ]; then
-                        echo "Rollback successful — $READY pods healthy"
-                      else
-                        echo "Rollback failed — manual intervention needed"
-                        exit 1
-                      fi
+                    pruningEnabled: false
 
     # ============================================
     # STAGE 3: Approval
@@ -259,33 +225,36 @@ pipeline:
                         - _project_all_users
 
     # ============================================
-    # STAGE 4: Cleanup (Docker Delegate — no keys needed)
+    # STAGE 4: Cleanup
     # ============================================
     - stage:
         name: cleanup
         identifier: cleanup
         description: "Delete K8s resources + ECR"
-        type: CI
+        type: Deployment
         spec:
-          cloneCodebase: false
-          platform:
-            os: Linux
-            arch: Amd64
-          runtime:
-            type: Docker
-            spec: {}
+          deploymentType: Custom
+          service:
+            serviceRef: gocart
+          environment:
+            environmentRef: development
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: eks_cluster
           execution:
             steps:
               - step:
-                  type: Run
+                  type: ShellScript
                   name: Delete All
                   identifier: delete_all
                   spec:
-                    shell: Sh
-                    image: amazon/aws-cli:latest
-                    command: |-
-                      curl -sLO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                      chmod +x kubectl && mv kubectl /usr/local/bin/
-                      aws eks update-kubeconfig --region <+variable.aws_region> --name harness-eks-cluster
-                      kubectl delete namespace gocart --ignore-not-found=true
-                      aws ecr delete-repository --repository-name gocart --force --region <+variable.aws_region> || true
+                    shell: Bash
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          kubectl delete namespace gocart --ignore-not-found=true
+                          aws ecr delete-repository --repository-name gocart --force --region <+variable.aws_region> || true
+                    onDelegate: true
+                  timeout: 5m
+            rollbackSteps: []

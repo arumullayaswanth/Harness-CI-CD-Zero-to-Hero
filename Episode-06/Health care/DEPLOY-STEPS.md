@@ -3,7 +3,7 @@
 ## Flow
 
 ```
-Push code → Import pipeline → Run → Image in ECR → Docker container on EC2 → http://EC2-IP
+Create Service + Environment in Harness UI → Import Pipeline → Run → EC2-IP:5000
 ```
 
 ---
@@ -29,7 +29,7 @@ Push code → Import pipeline → Run → Image in ECR → Docker container on E
 4. Type: `t2.medium` (2 CPU, 4 GB)
 5. Key pair: Create or use existing
 6. **IAM Role: Attach Admin Role** (Instance Profile)
-7. Security Group: Allow SSH (22) + HTTP (5000)
+7. Security Group: Allow SSH (22) + port 5000
 8. Launch → Wait for Running ✅
 
 ---
@@ -45,29 +45,16 @@ sudo systemctl start docker
 sudo systemctl enable docker
 sudo usermod -aG docker $USER
 newgrp docker
-docker --version
 ```
 
 ---
 
 ## Step 3: Install Docker Delegate (CD Level)
 
-**In Harness UI:**
-1. Account: `yaswanth.arumulla` → Organization: `default` → Project: `HarnessCICDZerotoHero`
-2. Go to Project Settings → **Delegates**
-3. You'll see: "There are no Delegates in your project"
-4. Click **+ New Delegate**
-5. Select **Docker**
-6. Name: `cd-docker-delegate`
-7. Copy the docker run command shown in Harness UI
-8. SSH into your EC2 and run the command (with modifications below)
-
-**Modify the command before running:**
-- Remove `--network host` (not needed for CD)
-- Remove any `DELEGATE_TAGS` line (not needed for CD)
-- Add `-v /var/run/docker.sock:/var/run/docker.sock`
-
-**Final command on EC2:**
+1. Harness UI: Account `yaswanth.arumulla` → Org `default` → Project `HarnessCICDZerotoHero`
+2. Project Settings → **Delegates** → **+ New Delegate** → **Docker**
+3. Name: `cd-docker-delegate`
+4. Copy command → Modify → Run on EC2:
 
 ```bash
 docker run -d --cpus=1 --memory=2g \
@@ -81,20 +68,36 @@ docker run -d --cpus=1 --memory=2g \
   harness/delegate:latest
 ```
 
-**NO `--network host`, NO tags, NO Runner — CD only!**
+**NO `--network host`, NO tags, NO Runner!**
 
-| | Episode 3 (CI) | Episode 6 (CD) |
-|---|---|---|
-| `--network host` | YES | NO |
-| Tags | `linux-amd64` | None |
-| Docker Runner | YES (port 3000) | NO |
-| Purpose | Build code | Deploy containers |
-
-Wait 2 min → Harness UI → Delegates → `cd-docker-delegate` → **Connected** ✅
+Wait 2 min → **Connected** ✅
 
 ---
 
-## Step 4: Push Code to GitHub
+## Step 4: Create Service in Harness UI
+
+1. CD → **Services** → **+ New Service**
+2. Name: `healthcare-website`
+3. Deployment Type: **Custom**
+4. Save
+
+---
+
+## Step 5: Create Environment in Harness UI
+
+1. CD → **Environments** → **+ New Environment**
+2. Name: `development`
+3. Type: **Pre-Production**
+4. Save
+5. Inside environment → **+ New Infrastructure**
+6. Name: `ec2-docker`
+7. Type: **Custom**
+8. Delegate Selector: select your `cd-docker-delegate`
+9. Save
+
+---
+
+## Step 6: Push Code to GitHub
 
 ```bash
 git add .
@@ -104,10 +107,10 @@ git push origin master
 
 ---
 
-## Step 5: Import Pipeline
+## Step 7: Import Pipeline (in CD module)
 
-1. Pipelines → Import from Git
-2. Pipeline Name: `episode6-healthcare-docker-cd`
+1. CD → Pipelines → **+ Create a Pipeline** → **Import from Git**
+2. Select: **Third-party Git provider**
 3. Connector: `Github`
 4. Repo: `Harness-CI-CD-Zero-to-Hero`
 5. Branch: `master`
@@ -116,36 +119,31 @@ git push origin master
 
 ---
 
-## Step 6: Run Pipeline
-
-1. Run Pipeline → Branch: `master`
-2. Watch:
+## Step 8: Run Pipeline
 
 ```
 Stage 1: Build & Push to ECR ✅
-Stage 2: Deploy to EC2 ✅
+Stage 2: Deploy to EC2 (CD stage) ✅
   ├── Deploy Container
-  ├── Health Check (HTTP 200)
-  └── Tag :stable
+  ├── Health Check (HTTP 200 on /health)
+  ├── Tag :stable
+  └── Rollback (auto on failure):
+      ├── Stop Failed Deployment
+      ├── Restore Last Successful Build
+      ├── Start Previous Version
+      └── Rollback Health Check
 Stage 3: Approval ⏸️
 Stage 4: Cleanup ✅
 ```
 
 ---
 
-## Step 7: Access Website
+## Step 9: Access Website
 
 ```
 http://EC2-PUBLIC-IP:5000
-```
-
-Open in browser → Healthcare website visible ✅
-
-API endpoints:
-```
-http://EC2-PUBLIC-IP:5000/health    → {"status": "healthy"}
-http://EC2-PUBLIC-IP:5000/api/doctors → Doctor list (JSON)
-http://EC2-PUBLIC-IP:5000/api/services → Services list (JSON)
+http://EC2-PUBLIC-IP:5000/health
+http://EC2-PUBLIC-IP:5000/api/doctors
 ```
 
 ---
@@ -153,20 +151,10 @@ http://EC2-PUBLIC-IP:5000/api/services → Services list (JSON)
 ## Test Rollback
 
 1. Run pipeline → success ✅ (`:stable` tagged)
-2. Add garbage text in `app.py` (like `erxtcfgvhbjkmle` between imports)
+2. Add `erxtcfgvhbjkmle` in `app.py` (between imports)
 3. Push → Run pipeline
-4. Stage 1: Image builds fine ✅ (Python doesn't check syntax at build)
-5. Stage 2: Container starts → Flask crashes on bad syntax → `/health` returns no response → Health check FAILS → **Rollback triggers** → pulls `:stable` → old version back ✅
-
----
-
-## Cleanup
-
-```bash
-# Pipeline does this automatically after approval
-# Or manually:
-docker stop healthcare-website && docker rm healthcare-website
-```
+4. Stage 1 passes (image builds) ✅
+5. Stage 2: Flask crashes → `/health` no response → Rollback triggers ✅
 
 ---
 
@@ -174,7 +162,8 @@ docker stop healthcare-website && docker rm healthcare-website
 
 | Problem | Fix |
 |---------|-----|
-| "No eligible delegates" | Check delegate running: `docker ps` |
-| Website not loading | Security Group → allow port 80 |
-| "permission denied" docker | `sudo usermod -aG docker $USER && newgrp docker` |
-| Health check fails | Check container is running: `docker ps` |
+| "No eligible delegates" | `docker ps` on EC2 |
+| Website not loading | Security Group → allow port 5000 |
+| "Service not found" | Create `healthcare-website` in Services UI |
+| "Environment not found" | Create `development` in Environments UI |
+| "Infrastructure not found" | Create `ec2-docker` inside development |

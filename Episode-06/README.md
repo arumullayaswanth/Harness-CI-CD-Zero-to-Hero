@@ -102,21 +102,19 @@ Purpose: Build code in containers      Purpose: Deploy containers
 | Variable: `aws_account_id` | Project Settings → Variables | Episode 4 | [Episode 4 — Deployment Steps](../Episode-04/README.md#step-1-add-aws-account-id-variable) |
 | Variable: `aws_region` | Project Settings → Variables | Episode 3 | [Episode 3 — Terraform README](../Episode-03/terraform-project/README.md#step-4-add-variables-in-harness) |
 
-### Quick Start
+### New Setup for Episode 6
 
-**Topic 1 (Docker CD on EC2):**
-```bash
-# Import pipeline: Episode-06/Health care/.harness/pipeline-docker-cd.yaml
-# Run → Access: http://EC2-PUBLIC-IP
-```
+**In Harness CD module UI (create manually before running pipeline):**
 
-**Topic 2 (Kubernetes CD on EKS):**
-```bash
-# Import pipeline: Episode-06/gocart/.harness/pipeline-k8s-cd.yaml
-# Run → Access: http://LOADBALANCER-URL
-```
+| # | What to Create | Where | Details |
+|---|---------------|-------|---------|
+| 1 | Service: `healthcare-website` | CD → Services | Type: Custom |
+| 2 | Service: `gocart` | CD → Services | Type: Kubernetes, Manifests from Git, Artifact from ECR |
+| 3 | Environment: `development` | CD → Environments | Type: Pre-Production |
+| 4 | Infrastructure: `ec2-docker` | Inside `development` | Type: Custom, Delegate: `cd-docker-delegate` |
+| 5 | Infrastructure: `eks-cluster` | Inside `development` | Type: Kubernetes, Inherit from Delegate |
 
-See [Health care/DEPLOY-STEPS.md](./Health%20care/DEPLOY-STEPS.md) and [gocart/DEPLOY-STEPS.md](./gocart/DEPLOY-STEPS.md) for full instructions.
+See [Health care/DEPLOY-STEPS.md](./Health%20care/DEPLOY-STEPS.md) and [gocart/DEPLOY-STEPS.md](./gocart/DEPLOY-STEPS.md) for step-by-step.
 
 ---
 
@@ -166,23 +164,23 @@ Episode-06/
 ┌──────────────────────────────────────────────────────────┐
 │  TOPIC 1: HEALTHCARE WEBSITE ON EC2                       │
 │                                                           │
-│  Stage 1: Build & Push to ECR (OIDC)                     │
+│  Stage 1: Build & Push to ECR (CI stage, Harness Cloud)  │
 │  ┌──────────┐  ┌──────────────────┐                     │
 │  │Create ECR│→ │Build+Push (OIDC) │                     │
 │  └──────────┘  └──────────────────┘                     │
 │                     ↓                                     │
-│  Stage 2: Deploy to EC2                                  │
+│  Stage 2: Deploy to EC2 (CD Deployment stage)            │
 │  ┌──────────┐  ┌───────────┐  ┌──────────┐             │
 │  │docker run│→ │Health Chk │→ │Tag:stable│             │
-│  │-p 80:80  │  │HTTP 200?  │  │(success) │             │
+│  │-p 5000   │  │/health    │  │(success) │             │
 │  └──────────┘  └───────────┘  └──────────┘             │
 │                     │                                     │
-│           If fails → Rollback:                           │
+│           If fails → Rollback (auto):                    │
 │           Stop → Pull :stable → Start → Verify          │
 │                     ↓                                     │
 │  Stage 3: Approval ⏸️  →  Stage 4: Cleanup              │
 │                                                           │
-│  Access: http://EC2-PUBLIC-IP                            │
+│  Access: http://EC2-IP:5000                              │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -192,25 +190,19 @@ Episode-06/
 ┌──────────────────────────────────────────────────────────┐
 │  TOPIC 2: GOCART E-COMMERCE ON EKS                       │
 │                                                           │
-│  Stage 1: Build & Push to ECR (OIDC)                     │
+│  Stage 1: Build & Push to ECR (CI stage, Harness Cloud)  │
 │  ┌──────────┐  ┌──────────────────┐                     │
 │  │Create ECR│→ │Build+Push (OIDC) │                     │
 │  └──────────┘  └──────────────────┘                     │
 │                     ↓                                     │
-│  Stage 2: Deploy to Kubernetes                           │
-│  ┌───────────────────────────────────────────────┐      │
-│  │ kubectl apply:                                 │      │
-│  │ namespace → configmap → secret → postgres →   │      │
-│  │ wait → deployment → service                    │      │
-│  └───────────────────────┬───────────────────────┘      │
-│                          ↓                               │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │Verify    │→ │Get LB    │→ │Health Chk│              │
-│  │Rollout   │  │URL       │  │HTTP 200? │              │
-│  └──────────┘  └──────────┘  └──────────┘              │
+│  Stage 2: Deploy to EKS (CD Deployment stage)            │
+│  ┌────────────────┐  ┌──────────┐  ┌──────────┐        │
+│  │K8sRollingDeploy│→ │Verify    │→ │Health Chk│        │
+│  │(Harness native)│  │Pods + LB │  │HTTP 200  │        │
+│  └────────────────┘  └──────────┘  └──────────┘        │
 │                     │                                     │
-│           If fails → Rollback:                           │
-│           rollout undo → history → wait → verify        │
+│           If fails → Rollback (auto):                    │
+│           K8sRollingRollback (Harness native)            │
 │                     ↓                                     │
 │  Stage 3: Approval ⏸️  →  Stage 4: Cleanup              │
 │                                                           │
