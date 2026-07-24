@@ -74,9 +74,18 @@ Wait 2 min → **Connected** ✅
 
 ---
 
-## Step 3b: Add SSH Key as Secret + Verify Connection
+## Step 3b: Create SSH Key Secret (File Upload)
 
-1. Harness → Project Settings → **Secrets** → **+ New Secret** → **SSH Credential**
+1. Project Settings → **Secrets** → **+ New Secret** → **File**
+2. Secret Name: `ec2-pem-key`
+3. Upload: Select your `.pem` file from your computer
+4. Save
+
+---
+
+## Step 3c: Create SSH Credential + Verify Connection
+
+1. Project Settings → **Secrets** → **+ New Secret** → **SSH Credential**
 2. **SSH Details:**
    - Name: `ec2-ssh-key`
    - Save and Continue
@@ -84,11 +93,7 @@ Wait 2 min → **Connected** ✅
    - Auth Scheme: **SSH Key**
    - Authentication: **Username/SSH Key**
    - Username: `ec2-user`
-   - Select or create SSH Key: Click **Create or Select a Secret** → **+ New Secret File**
-     - Secret Name: `ec2-pem-key`
-     - Upload: Select your `.pem` file
-     - Save
-   - Select `ec2-pem-key`
+   - Select or create SSH Key: Click **Create or Select a Secret** → Select `ec2-pem-key`
    - SSH Port: `22`
 4. Click **Save and Continue**
 5. Verify Connection:
