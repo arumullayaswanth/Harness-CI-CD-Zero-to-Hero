@@ -37,14 +37,18 @@ Create Service + Environment in Harness UI → Import Pipeline → Run → EC2-I
 ## Step 2: SSH into EC2 + Install Docker
 
 ```bash
-ssh -i your-key.pem ec2-user@EC2-PUBLIC-IP
 
 sudo dnf update -y
-sudo dnf install -y docker
+sudo dnf install -y docker aws-cli
 sudo systemctl start docker
 sudo systemctl enable docker
 sudo usermod -aG docker $USER
 newgrp docker
+
+# Fix PATH for Harness SSH deployments (non-interactive shell)
+echo 'export PATH=/usr/bin:/usr/local/bin:$PATH' | sudo tee /etc/profile.d/harness-path.sh
+sudo chmod +x /etc/profile.d/harness-path.sh
+
 ```
 
 ---
