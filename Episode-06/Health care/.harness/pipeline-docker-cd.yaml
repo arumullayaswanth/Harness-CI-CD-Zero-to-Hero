@@ -84,7 +84,7 @@ pipeline:
                   name: Build and Push to ECR
                   identifier: build_push_ecr
                   spec:
-                    # CHANGE THIS: Your AWS OIDC connector
+                    # CHANGE THIS: Your AWS OIDC connector (Account Settings → Connectors) → account.aws_account
                     connectorRef: account.aws_account
                     region: <+variable.aws_region>
                     account: <+variable.aws_account_id>
@@ -106,13 +106,13 @@ pipeline:
         spec:
           deploymentType: Ssh
           service:
-            # CHANGE THIS: Your service ID
+            # CHANGE THIS: Your service ID (create in CD → Services) → healthcarewebsite
             serviceRef: healthcarewebsite
           environment:
-            # CHANGE THIS: Your environment ID
+            # CHANGE THIS: Your environment ID (create in CD → Environments) → development
             environmentRef: development
             infrastructureDefinitions:
-              # CHANGE THIS: Your infrastructure ID
+              # CHANGE THIS: Your infrastructure ID (create inside Environment) → ec2docker
               - identifier: ec2docker
           execution:
             steps:

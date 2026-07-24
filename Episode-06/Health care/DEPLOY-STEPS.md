@@ -154,9 +154,13 @@ Wait 2 min → **Connected** ✅
 6. Infrastructure Type: **AWS**
 7. Connector: Select `account.aws_account`
 8. Region: Select your region
-9. Host Filter: **Specify hosts** → Enter EC2 public IP
-10. Credentials: Select `ec2-ssh-key` (created in Step 3b)
-11. Save
+9. Credentials: Select `ec2-ssh-key` (created in Step 3b)
+10. Host Connection Type: **PublicIP**
+11. Use AWS Instance Filter → Select your VPC
+12. **Tag** → Click **+ Tag**:
+    - Key: `Name`
+    - Value: `cd-docker-delegate` (your EC2 Name tag)
+13. Save
 
 ---
 
