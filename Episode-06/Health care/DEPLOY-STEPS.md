@@ -88,13 +88,20 @@ Wait 2 min → **Connected** ✅
 
 1. CD → **Environments** → **+ New Environment**
 2. Name: `development`
-3. Type: **Pre-Production**
-4. Save
-5. Inside environment → **+ New Infrastructure**
-6. Name: `ec2-docker`
-7. Type: **Custom**
-8. Delegate Selector: select your `cd-docker-delegate`
-9. Save
+3. Environment Type: **Pre-Production**
+4. Setup: **Inline**
+5. Save
+
+---
+
+## Step 5b: Create Infrastructure inside Environment
+
+1. Inside `development` environment → **Infrastructure Definitions** tab
+2. Click **+ New Infrastructure**
+3. Name: `ec2-docker`
+4. Deployment Type: **Secure Shell**
+5. Select connector or delegate selector: `cd-docker-delegate`
+6. Save
 
 ---
 
