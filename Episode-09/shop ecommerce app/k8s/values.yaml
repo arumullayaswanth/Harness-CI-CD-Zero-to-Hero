@@ -1,4 +1,4 @@
-image: 713939171080.dkr.ecr.us-east-1.amazonaws.com/shop-ecommerce:v5
+image: 713939171080.dkr.ecr.us-east-1.amazonaws.com/shop-ecommerce:v6
 replicas: 2
 dbHost: mysql-service.shop-ecommerce.svc.cluster.local
 dbPort: '3306'
