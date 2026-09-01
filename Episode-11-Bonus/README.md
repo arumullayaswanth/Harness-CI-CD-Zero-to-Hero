@@ -21,7 +21,8 @@ Service Reliability Management (SRM)
 - Improve service reliability through real-time performance insights. Detect anomalies and automate remediation while empowering your team to quickly identify and resolve issues.
 
 Resilience Testing
--Run real-world, controlled experiments that will reveal your systems' weaknesses to avoid disasters, improve customer experience, maintain competitive advantage, accelerate digital transformation, boost developer experience, and achieve Continuous Resilience™.
+- Run real-world, controlled experiments that will reveal your systems' weaknesses to avoid disasters, improve customer experience, maintain competitive advantage, accelerate digital transformation, boost developer experience, and achieve Continuous Resilience™.
+
 
 
  Overview](../README.md)
