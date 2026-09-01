@@ -1,9 +1,8 @@
 
 ### Episode 14 — Service Reliability Management (SRM)
 
-Once you've covered delivery and cost, move into **reliability**.
+ covered delivery and cost, move into **reliability**.
 
-Teach:
 
 * What is Service Reliability Management?
 * Why deployment success doesn't mean application success
