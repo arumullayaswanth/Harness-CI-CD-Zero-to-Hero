@@ -1,0 +1,74 @@
+# ============================================
+# TRIGGERS for Harness Code Repository CI (Episode 11)
+# ============================================
+# Created in Harness UI (Pipelines → Triggers → + New Trigger → Harness Code Repository)
+# This file is REFERENCE ONLY — shows what each trigger looks like.
+#
+# The PR trigger is the heart of Episode 11:
+#   Open/Update a PR in Harness Code → this pipeline runs → Branch Rule blocks
+#   merge until the pipeline passes (CI gate + required code review).
+# ============================================
+
+# ============================================
+# TRIGGER 1: Pull Request (runs on PR to main)  ← the important one
+# ============================================
+# trigger:
+#   name: on-pull-request
+#   identifier: on_pull_request
+#   enabled: true
+#   type: Webhook
+#   spec:
+#     type: Harness            # ← Harness Code (not Github)
+#     spec:
+#       type: PullRequest
+#       spec:
+#         connectorRef: codeRepoConnector   # ← CHANGE: your Harness Code repo connector
+#         repoName: code-repo-app           # ← CHANGE: your Harness Code repo name
+#         autoAbortPreviousExecutions: true
+#         actions:
+#           - Open
+#           - Reopen
+#           - Synchronize
+#         payloadConditions:
+#           - key: targetBranch
+#             operator: Equals
+#             value: main
+#     inputYaml: |
+#       pipeline:
+#         properties:
+#           ci:
+#             codebase:
+#               build:
+#                 type: PR
+#                 spec:
+#                   number: <+trigger.prNumber>
+
+# ============================================
+# TRIGGER 2: Push (runs on merge to main → build + push image)
+# ============================================
+# trigger:
+#   name: on-push-main
+#   identifier: on_push_main
+#   enabled: true
+#   type: Webhook
+#   spec:
+#     type: Harness
+#     spec:
+#       type: Push
+#       spec:
+#         connectorRef: codeRepoConnector   # ← CHANGE: your Harness Code repo connector
+#         repoName: code-repo-app           # ← CHANGE: your Harness Code repo name
+#         autoAbortPreviousExecutions: true
+#         payloadConditions:
+#           - key: targetBranch
+#             operator: Equals
+#             value: main
+#     inputYaml: |
+#       pipeline:
+#         properties:
+#           ci:
+#             codebase:
+#               build:
+#                 type: branch
+#                 spec:
+#                   branch: main

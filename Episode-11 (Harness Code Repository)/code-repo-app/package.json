@@ -1,0 +1,17 @@
+{
+    "name": "code-repo-app",
+    "version": "1.0.0",
+    "description": "Episode 11 - Harness Code Repository demo app",
+    "main": "app.js",
+    "scripts": {
+        "start": "node app.js",
+        "test": "jest --forceExit"
+    },
+    "dependencies": {
+        "express": "^4.19.2"
+    },
+    "devDependencies": {
+        "jest": "^29.7.0",
+        "supertest": "^7.0.0"
+    }
+}
