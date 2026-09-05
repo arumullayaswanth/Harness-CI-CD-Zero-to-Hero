@@ -154,70 +154,9 @@ After `terraform apply`, **ExternalDNS automatically creates Route53 records** w
 5. Click green **Run workflow** button
 6. Wait ~20 minutes (EKS cluster creation takes time)
 7. After completion → Click the run → See **Summary** tab for all details
-
-**What gets created automatically (zero manual clicks):**
-
-| Category | Resources |
-|----------|-----------|
-| **AWS Infrastructure** | VPC, 4 subnets, NAT Gateway, Internet Gateway, Route Tables |
-| **EKS** | Cluster (Auto Mode), IAM roles, KMS encryption, Security Group |
-| **Bastion** | EC2 (t2.medium), SSM access, kubectl, Helm, Docker, SonarQube |
-| **RDS** | PostgreSQL 16.3 (private subnet, encrypted, credentials auto-stored in AWS SM) |
-| **Delegate** | K8s Delegate (HA — 2 replicas, autoscale to 6, 2Gi-4Gi memory) |
-| **CI NodePool** | Karpenter NodePool `ci-builds` (xlarge/2xlarge instances, auto-scales to 64 CPU, auto-terminates when idle) |
-| **GitOps Agent** | ArgoCD (HA — controller×2, repo-server×2→5, server×2→4, redis×2) |
-| **ECR** | 11 repositories + lifecycle policy (delete untagged after 7 days) |
-| **ALB Controller** | AWS Load Balancer Controller (1 shared ALB for all services) |
-| **ESO** | External Secrets Operator (pulls secrets from AWS SM → K8s) |
-| **Harness Service** | `online-boutique` (ReleaseRepo type → points to values.yaml) |
-| **Harness Environments** | `development` (PreProduction) + `production` (Production) |
-| **Harness Connectors** | Prometheus, AWS Secrets Manager, Kubernetes |
-| **Harness OPA** | Policy (`production-governance.rego`) + PolicySet (On Run, severity: error) |
-| **Harness Monitored Service** | `online_boutique_production` (Prometheus health source for CV) |
-| **ArgoCD Apps** | monitoring (Helm), logging (Git), jaeger (Helm), otel-collector (Git) |
-| **Ingress** | Kibana ingress via shared ALB |
-| **Secrets** | AWS SM: `online-boutique/app-secrets` (you fill) + `online-boutique/db-credentials` (auto-filled by Terraform) |
-| **RBAC** | ClusterRole + ClusterRoleBinding for delegate (pod create permissions) |
-
 ---
 
 ## Step 5: Verify in Harness UI + Cluster
-
-After Terraform completes, verify everything appeared:
-
-**5.0 — EKS Cluster Verification (run on Bastion via SSM):**
-```bash
-# Connect to EKS
-aws eks update-kubeconfig --name ep10-enterprise-cluster --region us-east-1
-
-# Verify nodes are ready (should see 4 nodes: 3 workload + 1 CI)
-kubectl get nodes -o wide
-
-# Verify node groups with labels
-kubectl get nodes -L role,purpose
-
-# Expected:
-# NAME          STATUS   ROLES    AGE   VERSION   ROLE        PURPOSE
-# ip-10-0-...   Ready    <none>   5m    v1.31     workloads
-# ip-10-0-...   Ready    <none>   5m    v1.31     workloads
-# ip-10-0-...   Ready    <none>   5m    v1.31     workloads
-# ip-10-0-...   Ready    <none>   5m    v1.31                 ci-builds
-
-# Verify AWS Load Balancer Controller is running
-kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
-
-# Verify Cluster Autoscaler is running
-kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-cluster-autoscaler
-
-# Verify EBS CSI Driver is running
-kubectl get pods -n kube-system -l app=ebs-csi-controller
-
-# Verify Pod Identity Agent is running
-kubectl get pods -n kube-system -l app.kubernetes.io/name=eks-pod-identity-agent
-
-# Verify all EKS addons are ACTIVE
-aws eks list-addons --cluster-name ep10-enterprise-cluster --region us-east-1
-```
 
 > All pods should be Running. If any are Pending/CrashLoop, check `kubectl describe pod <pod-name> -n kube-system` for the reason.
 
@@ -227,29 +166,14 @@ aws eks list-addons --cluster-name ep10-enterprise-cluster --region us-east-1
 3. If not connected: wait 2-3 min, refresh
 
 **5.2 — GitOps Agent:**
-1. Go to **GitOps → Settings → GitOps Agents**
-2. Should see: `ep10-gitops-agent` — Status: ● **Healthy**
 
 **5.3 — Service:**
-1. Go to **Deployments → Services**
-2. Should see: `online-boutique`
-3. Click it → verify Manifest type = Release Repo, Artifact = ECR
 
 **5.4 — Environments:**
-1. Go to **Deployments → Environments**
-2. Should see: `development` (Pre-Production) + `production` (Production)
 
 **5.5 — Connectors:**
-1. Go to **Project Settings → Connectors**
-2. Click each → **Test Connection**:
-   - `prometheus` → ✅
-   - `aws_secrets_manager` → ✅
-   - `k8sdelegate` → ✅
 
 **5.6 — OPA Policy:**
-1. Go to **Project Settings → Governance → Policies**
-2. Should see: `Production Governance` (active)
-3. Click **Policy Sets** tab → `Production Policy Set` (enabled, On Run)
 
 ---
 
@@ -278,27 +202,14 @@ aws secretsmanager update-secret --secret-id online-boutique/app-secrets \
 ```
 
 **6.2 — DB Credentials (auto-filled by Terraform — no action needed):**
-- Secret: `online-boutique/db-credentials`
-- Contains: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `DB_URL`
-- Terraform generated a random 24-char password and stored everything automatically
-- ESO pulls this into K8s Secret `db-credentials` → all pods get these env vars
 
 > ESO polls AWS SM every 1 hour. To force immediate refresh: `kubectl delete externalsecret app-secrets -n online-boutique` → ESO recreates it within 30 seconds.
 
 **6.3 — Elasticsearch Connector (REQUIRED — refresh after every `terraform apply`):**
-
+> **Go to the AWS account and copy the elasticsearch password in awa secret manager and go to the harness secrets and update the secrets and next Go to the connectors Edit the elasticsearch connector And remove the password and again add the password and click next and select the delegate agent And save it and verify**
 > **Without this step, the Verify Deployment step will fail with "data collection failure" and trigger rollback.**
 
-1. Go to **Harness → Project Settings → Connectors** → find `elasticsearch`
-2. Click **Edit** → click **Next** → **Next** → **Save** (just re-save without changes)
-3. Click **Test Connection** → should show **Success** ✅
-
 > **Why?** Terraform generates a new EFK password on each `apply`. The Harness CV perpetual task caches the old credentials internally. Re-saving the connector forces Harness to refresh its credential cache. Without this, CV cannot authenticate to Elasticsearch → "data collection failure" → pipeline rolls back even though the app is healthy.
-
-> **When to do this:**
-> - After every fresh `terraform apply`
-> - If Verify step fails with "data collection failure"
-> - If you see "0 out of 0 Log Clusters" in the CV details
 
 ---
 
@@ -343,23 +254,6 @@ aws secretsmanager update-secret --secret-id online-boutique/app-secrets \
 1. Click **Run Pipeline**
 2. Select branch: `main`
 3. Click **Run Pipeline**
-
-**First run flow:**
-```
-🔍 Security Scans (Gitleaks + Trivy + OWASP + SonarQube)... ✅ (2-3 min)
-🐳 Build 11 images → Push to ECR (OIDC)................... ✅ (5-8 min)
-🛡️ AI Security Agent → report generated.................... ✅ (30s)
-🎯 AI Risk Agent → SAFE................................... ✅ (30s)
-📝 Update Release Repo (creates PR with 11 image tags)..... ✅
-⏸️ Approve Deployment...................................... ⏳ Click "Approve"
-🔀 Merge PR → merged to main.............................. ✅
-🔄 GitOps Sync → ArgoCD syncs cluster..................... ✅
-📊 Get App Status → Healthy............................... ✅
-✅ Verify Deployment (Prometheus CV)....................... ✅
-📱 Slack: "Pipeline #1 succeeded".......................... ✅
-```
-
-> **Note:** First run may take longer (images building from scratch, no cache yet). Subsequent runs are faster (cache hits).
 
 ---
 
@@ -432,23 +326,6 @@ kubectl get pods -n online-boutique
 
 **Your AWS bill = $0 after destroy completes.**
 
----
-
-## Cost
-
-| Resource | Per Day | Per Month |
-|----------|---------|-----------|
-| EKS cluster (Auto Mode) | ~$2.40 | ~$72 |
-| RDS PostgreSQL (db.t3.micro) | ~$0.50 | ~$15 |
-| Bastion EC2 (t2.medium) | ~$1.10 | ~$33 |
-| NAT Gateway | ~$1.10 | ~$33 |
-| ALB (1 shared) | ~$0.70 | ~$21 |
-| EBS volumes | ~$0.20 | ~$6 |
-| ECR storage | ~$0.10 | ~$3 |
-| **TOTAL (running)** | **~$6.10** | **~$183** |
-| **After destroy** | **$0.00** | **$0.00** |
-
----
 
 ## Troubleshooting
 
