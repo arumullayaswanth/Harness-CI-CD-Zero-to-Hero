@@ -1,9 +1,5 @@
 # Episode 11: Harness Code Repository — Deployment Steps
 
-## What We Are Doing
-
-Host a Git repo **inside Harness**, open a Pull Request, review it, and let a CI pipeline **gate the merge**.
-
 ```
 Developer → Harness Code Repository → Pull Request → Code Review → CI Pipeline → Build → Merge
 ```
