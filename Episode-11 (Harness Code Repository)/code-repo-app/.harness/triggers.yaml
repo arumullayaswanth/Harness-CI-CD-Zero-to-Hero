@@ -25,10 +25,10 @@
 #         connectorRef: codeRepoConnector   # ← CHANGE: your Harness Code repo connector
 #         repoName: code-repo-app           # ← CHANGE: your Harness Code repo name
 #         autoAbortPreviousExecutions: true
-#         actions:
-#           - Open
+#         actions:            # Harness Code PR actions
+#           - Create
 #           - Reopen
-#           - Synchronize
+#           - Update
 #         payloadConditions:
 #           - key: targetBranch
 #             operator: Equals

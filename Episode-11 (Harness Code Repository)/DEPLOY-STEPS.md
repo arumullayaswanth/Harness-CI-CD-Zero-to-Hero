@@ -81,27 +81,96 @@ git push origin main
    - **Branch:** `main`
    - **YAML Path:** `.harness/code-repo-pipeline.yaml`
 4. Click **Import Pipeline**
-5. Open the pipeline → confirm the codebase points to the **Harness Code** repo `code-repo-app`
+5. Open the pipeline → **Codebase** settings → **"Where is your code?"** → select **Harness Code Repository** → pick `code-repo-app` → **Save**
+
+> (Source: [Harness docs — Set default codebase](https://developer.harness.io/docs/code-repository/pipelines/codebase-from-harness-code))
 
 > The pipeline has one CI stage: Install Dependencies → Run Unit Tests → Build Docker Image → Summary.
+
+### Optional: Run the pipeline once manually (registers the CI status check)
+
+Run it once so the check name shows up in Branch Rules (Step 6).
+
+1. Click **Run** → the **Run Pipeline** dialog opens
+2. **CI Codebase → Build Type:** `Git Branch`
+3. **Branch Name:** type `main` (if the dropdown shows *"No matching results found"*, just type `main` manually — the dropdown is empty until the repo has commits)
+4. Click **Run Pipeline** → wait for green ✅
 
 ---
 
 ## Step 5: Add a Pull Request Trigger
 
-This makes the pipeline run automatically whenever a PR is opened.
+This makes the pipeline run automatically whenever a PR is opened. The trigger is an **"On New Webhook"** trigger with Payload Type **Harness** (Harness Code).
 
 1. Open the pipeline → **Triggers** tab → **+ New Trigger**
-2. Select **Harness Code Repository** → **Pull Request**
-3. Fill in:
-   - Name: `on-pull-request`
-   - Repository: `code-repo-app`
-   - Actions: **Open, Reopen, Synchronize**
-   - Target Branch: **Equals** `main`
-4. In **Configuration**, set the build type to **PR** so it builds the PR head
-5. Click **Create Trigger**
+2. Under **Webhook**, choose **Harness** (Harness Code Repository)
 
+**Tab 1 — Configuration:**
+   - **Name:** `on-pull-request`
+   - **Payload Type:** `Harness`
+   - **Repository:** `code-repo-app`
+   - **Event:** `Pull Request`
+   - **Actions:** check **Create**, **Reopen**, **Update** (these run CI when a PR is opened or gets new commits)
+   - **Auto-abort Previous Execution:** ✅ check it (cancels an in-progress build when the PR gets a new commit — saves CI minutes)
+   - Click **Continue**
+
+**Tab 2 — Conditions:**
+   - **Target Branch:** operator `Equals`, value `main`
+   - Click **Continue**
+
+**Tab 3 — Pipeline Input:**
+   - Leave **Input Set Source** and **Pipeline Source** = `<+trigger.branch>`
+   - Leave **Pipeline Stages** = `All Stages`
+   - Make sure the trigger is **Enabled** (toggle top-left)
+   - Click **Create Trigger**
 > Reference YAML is in `code-repo-app/.harness/triggers.yaml`.
+
+### Step 5b: Add a Push Trigger (build on merge to main)
+
+This runs the pipeline automatically when a PR is merged (push to `main`).
+
+1. **Triggers** tab → **+ New Trigger** → **Webhook** → **Harness**
+
+**Configuration:**
+   - **Name:** `on-push-main`
+   - **Payload Type:** `Harness`
+   - **Repository:** `code-repo-app`
+   - **Event:** `Push`
+   - Click **Continue**
+
+**Conditions:**
+   - **Target Branch:** `Equals` `main`
+   - Click **Continue**
+
+**Pipeline Input:**
+   - **Build Type:** `Git Branch`
+   - **Branch Name:** `main`
+   - Enabled → **Create Trigger**
+
+---
+
+## Fully Automatic Flow (No Manual Runs)
+
+Once both triggers + the branch rule are set up, everything runs on its own:
+
+```
+Open / update a PR
+      ↓  (PR trigger fires automatically)
+CI runs: install → test → build   →  posts ✅/❌ status check on the PR
+      ↓
+Branch Rule blocks Merge until: CI ✅  AND  1 approval ✅
+      ↓
+Merge to main
+      ↓  (Push trigger fires automatically)
+CI runs again → builds + pushes the final image
+```
+
+| Trigger | Fires on | Purpose |
+|---------|----------|---------|
+| `on-pull-request` | PR opened / reopened / updated | Validate the PR before merge |
+| `on-push-main` | Merge / push to `main` | Build + push the final image |
+
+> After this, you never click **Run** manually — the PR and merge events drive the pipeline.
 
 ---
 

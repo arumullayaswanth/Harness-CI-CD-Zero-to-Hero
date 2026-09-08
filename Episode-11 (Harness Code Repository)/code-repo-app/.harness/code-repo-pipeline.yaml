@@ -8,10 +8,13 @@ pipeline:
   properties:
     ci:
       codebase:
-        # This points to your Harness Code repo (set when you import the pipeline)
-        connectorRef: codeRepoConnector # ← CHANGE: your Harness Code repo connector ID
+        # Harness Code repo: use ONLY repoName (NO connectorRef — Harness Code has no connector)
         repoName: code-repo-app # ← CHANGE: your Harness Code repo name
-        build: <+input>
+        # Branch comes from the PR/push trigger — no runtime input, so no Input Set is required.
+        build:
+          type: branch
+          spec:
+            branch: <+trigger.branch>
   stages:
     # ============================================
     # STAGE 1: Build & Test (runs on every PR)
@@ -42,7 +45,6 @@ pipeline:
                     shell: Sh
                     image: node:20-alpine
                     command: |-
-                      cd code-repo-app
                       npm install
 
               # --- Run unit tests (the CI gate for PRs) ---
@@ -54,7 +56,6 @@ pipeline:
                     shell: Sh
                     image: node:20-alpine
                     command: |-
-                      cd code-repo-app
                       npm test
 
               # --- Build Docker image (proves the app is shippable) ---
