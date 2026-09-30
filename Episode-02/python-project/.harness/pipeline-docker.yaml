@@ -1,40 +1,14 @@
-# ============================================
-# PIPELINE: Python App - Harness Cloud + Push to Docker Hub
-# ============================================
-# CHANGE THESE 4 VALUES:
-#   1. projectIdentifier → Your project ID (from URL)
-#   2. orgIdentifier → Your org name (usually "default")
-#   3. connectorRef (codebase) → Your GitHub connector
-#   4. connectorRef (docker) → Your Docker Hub connector
-#
-# PREREQUISITES:
-#   - Harness Cloud enabled (credit card verification, no charge)
-#   - Docker Hub connector created in Harness (account.dockerhub)
-#   - Secret "docker-hub-password" in Harness
-#   - Variable "docker_username" in Harness
-# ============================================
 pipeline:
   name: python-docker-pipeline
   identifier: python_docker_pipeline
-  ##################################################
-  # CHANGE THIS: Your project ID
-  ###################################################
-  projectIdentifier: HarnessCICDZerotoHero
-  ####################################################
-  # CHANGE THIS: Your org name
-  ###################################################
+  projectIdentifier: default_project
   orgIdentifier: default
-  tags: {}
+  tags:
+    ai_generated: ""
   properties:
     ci:
       codebase:
-        ##############################################
-        # CHANGE THIS: Your GitHub connector
-        ############################################
         connectorRef: account.Github
-        ###############################################
-        # CHANGE THIS: Your repo name
-        ###############################################
         repoName: Harness-CI-CD-Zero-to-Hero
         build: <+input>
   stages:
@@ -53,7 +27,6 @@ pipeline:
             spec: {}
           execution:
             steps:
-              # Step 1: Install dependencies
               - step:
                   type: Run
                   name: Install Dependencies
@@ -66,7 +39,6 @@ pipeline:
                       pip install -r requirements.txt
                       echo "=== Dependencies Installed! ==="
 
-              # Step 2: Run unit tests
               - step:
                   type: Run
                   name: Run Tests
@@ -80,7 +52,6 @@ pipeline:
                       pytest test_app.py -v
                       echo "=== All 3 Tests Passed! ==="
 
-              # Step 3: Run app and verify
               - step:
                   type: Run
                   name: Run App
@@ -93,16 +64,11 @@ pipeline:
                       pip install -r requirements.txt
                       python -c "from app import app; client = app.test_client(); r = client.get('/'); print(r.get_json()); r = client.get('/health'); print(r.get_json()); print('=== App Verified! ===')"
 
-              # Step 4: Build Docker image and Push to Docker Hub
-              # Uses Harness built-in step (no privileged mode needed)
               - step:
                   type: BuildAndPushDockerRegistry
                   name: Build and Push to Docker Hub
                   identifier: build_push_docker
                   spec:
-                    ###############################################
-                    # CHANGE THIS: Your Docker Hub connector name
-                    ##############################################
                     connectorRef: dockerhub
                     repo: <+variable.docker_username>/python-harness-app
                     tags:
@@ -111,7 +77,6 @@ pipeline:
                     dockerfile: Episode-02/python-project/Dockerfile
                     context: Episode-02/python-project
 
-              # Step 5: Verify success
               - step:
                   type: Run
                   name: Verify Push
@@ -128,7 +93,6 @@ pipeline:
                       echo "  View: https://hub.docker.com/r/<+variable.docker_username>/python-harness-app"
                       echo "========================================="
 
-              # Step 6: Wait 1 minute before cleanup
               - step:
                   type: Run
                   name: Wait Before Cleanup
@@ -141,7 +105,6 @@ pipeline:
                       sleep 60
                       echo "=== Done waiting! Proceeding to cleanup ==="
 
-              # Step 7: Delete Docker Hub repository image and verify
               - step:
                   type: Run
                   name: Delete and Verify
@@ -151,16 +114,37 @@ pipeline:
                     command: |-
                       echo "=== Step 7: Deleting Docker Hub Image ==="
                       echo ""
-                      TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username":"<+variable.docker_username>","password":"<+secrets.getValue("docker-hub-password")>"}' https://hub.docker.com/v2/users/login/ | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+                      # Store credentials
+                      DOCKER_USER="<+variable.docker_username>"
+                      DOCKER_PASS='<+secrets.getValue("docker-hub-password")>'
+
+                      # Build JSON payload properly using printf (no heredoc whitespace issues)
+                      JSON_PAYLOAD=$(printf '{"username":"%s","password":"%s"}' "$DOCKER_USER" "$DOCKER_PASS")
+
+                      # Login to Docker Hub API
+                      RESPONSE=$(curl -s -H "Content-Type: application/json" -X POST \
+                        -d "$JSON_PAYLOAD" \
+                        https://hub.docker.com/v2/users/login/)
+
+                      # Check if login was successful
+                      TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('token',''))" 2>/dev/null)
+
+                      if [ -z "$TOKEN" ]; then
+                        echo "ERROR: Docker Hub login failed!"
+                        echo "Response: $RESPONSE"
+                        exit 1
+                      fi
+
                       echo "Logged in to Docker Hub API"
                       echo ""
-                      echo "Deleting entire repository: <+variable.docker_username>/python-harness-app"
-                      curl -s -X DELETE -H "Authorization: JWT $TOKEN" https://hub.docker.com/v2/repositories/<+variable.docker_username>/python-harness-app/
+                      echo "Deleting entire repository: ${DOCKER_USER}/python-harness-app"
+                      DELETE_RESPONSE=$(curl -s -X DELETE -H "Authorization: JWT $TOKEN" "https://hub.docker.com/v2/repositories/${DOCKER_USER}/python-harness-app/")
+                      echo "Delete response: $DELETE_RESPONSE"
                       echo ""
                       echo "=== Repository Deleted! ==="
                       echo "Next run will create it fresh again."
 
-              # Step 8: Final verification - confirm images are gone from Docker Hub
               - step:
                   type: Run
                   name: Final Verify
@@ -174,19 +158,25 @@ pipeline:
                       echo ""
                       STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://hub.docker.com/v2/repositories/<+variable.docker_username>/python-harness-app/)
                       if [ "$STATUS" = "404" ]; then
-                        echo "✅ Repository python-harness-app — DELETED (not found)"
+                        echo "Repository python-harness-app — DELETED (not found)"
                       else
-                        echo "⚠️ Repository may still exist (status: $STATUS)"
+                        echo "Repository may still exist (status: $STATUS)"
                       fi
                       echo ""
                       echo "========================================="
                       echo "  ALL DONE!"
-                      echo "  Step 1: Dependencies installed ✅"
-                      echo "  Step 2: Tests passed ✅"
-                      echo "  Step 3: App verified ✅"
-                      echo "  Step 4: Image pushed to Docker Hub ✅"
-                      echo "  Step 5: Push verified ✅"
-                      echo "  Step 6: Waited 1 minute ✅"
-                      echo "  Step 7: Image deleted from Docker Hub ✅"
-                      echo "  Step 8: Deletion verified ✅"
+                      echo "  Step 1: Dependencies installed"
+                      echo "  Step 2: Tests passed"
+                      echo "  Step 3: App verified"
+                      echo "  Step 4: Image pushed to Docker Hub"
+                      echo "  Step 5: Push verified"
+                      echo "  Step 6: Waited 1 minute"
+                      echo "  Step 7: Image deleted from Docker Hub"
+                      echo "  Step 8: Deletion verified"
                       echo "========================================="
+        failureStrategies:
+          - onFailure:
+              errors:
+                - AllErrors
+              action:
+                type: MarkAsFailure

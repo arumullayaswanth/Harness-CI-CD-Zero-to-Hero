@@ -1,0 +1,35 @@
+pipeline:
+  identifier: Build_ejajkhan10_Harness_CI_CD_Zero_to_Hero_1790087262800
+  name: Build Harness-CI-CD-Zero-to-Hero
+  orgIdentifier: default
+  projectIdentifier: HarnessCICDZerotoHero
+  properties:
+    ci:
+      codebase:
+        build: <+input>
+        connectorRef: account.Github
+        repoName: ejajkhan10/Harness-CI-CD-Zero-to-Hero
+  stages:
+    - stage:
+        identifier: build
+        name: build
+        spec:
+          caching:
+            enabled: true
+          cloneCodebase: true
+          execution:
+            steps:
+              - step:
+                  identifier: echo
+                  name: echo
+                  spec:
+                    command: echo hello world
+                  timeout: ""
+                  type: Run
+          platform:
+            arch: Amd64
+            os: Linux
+          runtime:
+            spec: {}
+            type: Cloud
+        type: CI
