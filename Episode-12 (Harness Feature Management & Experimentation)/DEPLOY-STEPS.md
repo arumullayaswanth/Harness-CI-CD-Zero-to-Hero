@@ -29,34 +29,44 @@ Deploy (flag OFF) → Developers → 10% users → Everyone → Kill switch OFF
 
 ---
 
-## Step 2: Create an Environment + SDK Key
+## Step 2: Create an Environment
 
-1. Feature Flags → **Environments** → **+ New Environment**
-   - Name: `production` (Type: Production)
-2. Open the environment → **SDK Keys** → **+ Add Key**
-   - Type: **Server** (our Node.js app is server-side)
-   - Name: `ff-server-key`
-3. **Copy the key** (a UUID) — you'll store it in the Harness Secret Manager in Step 5
+1. In your project → **Feature Flags** → **Environments** → **Create an Environment**
+2. Enter a **Name**: `production` (Harness auto-generates the identifier)
+3. Select **Environment Type**: **Production** → click **Create**
 
-> Server SDK key = for backend apps. Client SDK key = for browser/mobile. We use Server.
+> Flags are shared across environments but toggled independently — ON in one, OFF in another.
 
 ---
 
-## Step 3: Create the Feature Flag
+## Step 3: Create an SDK Key (Server type)
 
-1. Feature Flags → **Flags** → **+ New Flag** → **Boolean**
+1. Open the `production` environment → **Settings** → **Create SDK Key**
+2. **Name**: `ff-server-key`
+3. **Key Type**: **Server** (our Node.js app is server-side)
+4. Click **Create**
+5. **Copy and store the Secret now** — Harness redacts it once you leave the page. You'll paste it into the Harness Secret Manager in Step 5.
+
+> Server SDK key = backend apps. Client SDK key = browser/mobile. We use Server.
+
+---
+
+## Step 4: Create the Feature Flag
+
+1. **Feature Flags** → **Flags** → **+ New Flag** → select **Boolean**
 2. Fill in:
-   - Name: `new_checkout_banner`
-   - Identifier: `new_checkout_banner` (must match the code)
-   - Flag type: **Boolean** (ON / OFF)
-   - Default rules: **OFF** for production (so nobody sees it until you decide)
-3. Click **Save** → **Create**
+   - **Name**: `new_checkout_banner`
+   - **Identifier**: `new_checkout_banner` (must exactly match the code in `app.js`)
+   - **Flag Type**: Boolean (ON / OFF)
+3. Set the **variation when the flag is ON** = true, **OFF** = false
+4. In **Default rules**, set the flag **OFF** for `production` (nobody sees the banner until you decide)
+5. Click **Save** / **Create**
 
 > The identifier `new_checkout_banner` must exactly match what the app checks in `app.js`.
 
 ---
 
-## Step 4: Store the SDK Key in the Harness Secret Manager
+## Step 5: Store the SDK Key in the Harness Secret Manager
 
 We use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 
@@ -71,7 +81,7 @@ We use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 
 ---
 
-## Step 5: Create the Service (`feature_flags_app`)
+## Step 6: Create the Service (`feature_flags_app`)
 
 1. Harness → **Deployments → Services → + New Service**
 2. Fill in:
@@ -101,7 +111,9 @@ We use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 
 ---
 
-## Step 6: Create the Environment (`production`)
+## Step 7: Create the CD Environment (`production`)
+
+> This is the **Deployment** environment (CD module), separate from the Feature Flags environment in Step 2 — same name, different module.
 
 1. Harness → **Deployments → Environments → + New Environment**
 2. Fill in:
@@ -111,7 +123,7 @@ We use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 
 ---
 
-## Step 7: Create the Infrastructure (`eks_cluster`)
+## Step 8: Create the Infrastructure (`k8sdelegate`)
 
 1. Open the `production` environment → **Infrastructure Definitions** tab → **+ Infrastructure Definition**
 2. Fill in:
@@ -125,7 +137,7 @@ We use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 
 ---
 
-## Step 8: Import the Pipeline
+## Step 9: Import the Pipeline
 
 1. Harness → **Pipelines → + Create a Pipeline → Import from Git**
 2. Repo: `Harness-CI-CD-Zero-to-Hero`, Branch: `master`
@@ -136,11 +148,11 @@ The pipeline has two stages:
 - **build-and-push** (CI): unit tests → Create ECR Repo → BuildAndPushECR
 - **deploy-helm** (CD): HelmDeploy (renders secret + deployment + service from the chart) → Health Check
 
-> The pipeline references `serviceRef: feature_flags_app`, `environmentRef: production`, `infrastructureDefinitions: k8sdelegate` — the exact IDs you created in Steps 5-7. If your IDs differ, update them in the pipeline YAML.
+> The pipeline references `serviceRef: feature_flags_app`, `environmentRef: production`, `infrastructureDefinitions: k8sdelegate` — the exact IDs you created in Steps 6-8. If your IDs differ, update them in the pipeline YAML.
 
 ---
 
-## Step 9: Run the Pipeline (Deploy Once)
+## Step 10: Run the Pipeline (Deploy Once)
 
 1. **Run Pipeline** → branch `master`
 2. Flow:
@@ -154,7 +166,7 @@ The store page loads with the banner **hidden** — the flag is OFF.
 
 ---
 
-## Step 10: Demo — Turn the Flag ON
+## Step 11: Demo — Turn the Flag ON
 
 1. Harness → Feature Flags → `new_checkout_banner`
 2. Toggle it **ON** for `production`
@@ -167,7 +179,7 @@ Flag ON  → refresh → "🎉 NEW: Faster one-click checkout is here!"
 
 ---
 
-## Step 11: Demo — Targeting (developers only)
+## Step 12: Demo — Targeting (developers only)
 
 1. In the flag → **Targeting** → add a target rule
 2. Serve **ON** to a specific target (e.g. identifier `dev-user`)
@@ -179,7 +191,7 @@ Flag ON  → refresh → "🎉 NEW: Faster one-click checkout is here!"
 
 ---
 
-## Step 12: Demo — Percentage Rollout (10% → 100%)
+## Step 13: Demo — Percentage Rollout (10% → 100%)
 
 1. In the flag → **Percentage Rollout**
 2. Set 10% ON / 90% OFF → some users see it, most don't
@@ -188,7 +200,7 @@ Flag ON  → refresh → "🎉 NEW: Faster one-click checkout is here!"
 
 ---
 
-## Step 13: Demo — Kill Switch
+## Step 14: Demo — Kill Switch
 
 1. Pretend the feature has a bug
 2. Toggle the flag **OFF**
@@ -198,7 +210,7 @@ Flag ON  → refresh → "🎉 NEW: Faster one-click checkout is here!"
 
 ---
 
-## Step 14: Cleanup
+## Step 15: Cleanup
 
 ```bash
 kubectl delete namespace feature-flags
