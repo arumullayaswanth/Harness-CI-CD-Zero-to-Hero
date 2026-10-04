@@ -1,6 +1,6 @@
 # ============================================
-# Change values HERE → templates use them automatically
-# Harness resolves <+artifact.image> and <+secrets.getValue()> at deploy time.
+# Change values HERE → templates use them automatically.
+# Harness resolves the artifact image at deploy time. No secret expressions here.
 # ============================================
 
 replicaCount: 2
@@ -9,10 +9,9 @@ replicaCount: 2
 image: <+artifact.image>
 pullPolicy: IfNotPresent
 
-# FME server-side SDK key — injected at deploy time by the pipeline's HelmDeploy
-# step via --set harnessFmeSdkKey=<+secrets.getValue("harness_fme_sdk_key")>.
-# Left empty here so the Git-stored values file has no secret expression to resolve.
-harnessFmeSdkKey: ""
+# NOTE: The FME SDK key is NOT in this chart. A pipeline ShellScript step creates
+# the ff-secrets Kubernetes secret on the delegate before HelmDeploy, so there is
+# no secret expression in any Git-fetched file (avoids the Fetch Files error).
 
 service:
   type: LoadBalancer
