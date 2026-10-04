@@ -67,7 +67,8 @@ Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 3. Secret Name / ID: `harness_fme_sdk_key`
 4. Value: the **server-side SDK key** from Step 3 → **Save**
 
-> Flow: the chart's `values.yaml` reads it via `<+secrets.getValue("harness_fme_sdk_key")>` → Helm templates it into `templates/secret.yaml` (`ff-secrets`) → `HelmDeploy` applies it → pod reads `HARNESS_FME_SDK_KEY`. Masked in logs, never hardcoded.
+> Flow: the pipeline's **"Create FME Secret"** ShellScript step pulls this via `<+secrets.getValue("harness_fme_sdk_key")>` on the delegate and creates the `ff-secrets` K8s secret → the pod reads `HARNESS_FME_SDK_KEY` from it. Masked in logs, never hardcoded.
+> **Why not inside the Helm chart?** Harness cannot resolve `<+secrets.getValue()>` inside a Git-fetched Helm `values.yaml` (fails at "Fetch Files"). Creating the secret in a ShellScript step on the delegate avoids this.
 
 ---
 
@@ -76,7 +77,10 @@ Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 1. **Feature Flags** → **Create feature flag**
 2. **Name:** `new_checkout_banner` (must match the code in `app.js`)
 3. **Traffic Type:** `user` → **Create**
-4. Open the flag → environment `production` → set the **default rule** to **off** → **Save**
+4. Open the flag → select the **production** environment → click **Initiate Environment**
+5. In **Treatments**, keep the two defaults: `on` and `off`
+6. Under **"Select the default treatment"**, choose **off** (banner hidden until you decide)
+7. Click **Review changes** → **Save**
 
 > The flag name `new_checkout_banner` must match `client.getTreatment(user, "new_checkout_banner")` in the app.
 ---
@@ -104,7 +108,7 @@ Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
    - Image Path: `feature-flags-app`, Tag: `<+input>` → **Submit**
 5. **Save**
 
-> NativeHelm resolves `<+artifact.image>` and `<+secrets.getValue("harness_fme_sdk_key")>` in the chart's `values.yaml`, then Helm templates them into the manifests.
+> NativeHelm resolves `<+artifact.image>` in the chart's `values.yaml`. The SDK key is NOT in the chart — it's created as the `ff-secrets` K8s secret by the pipeline's ShellScript step (see Step 4).
 
 ---
 
@@ -165,31 +169,33 @@ The store page loads with the banner **hidden** (treatment = off / control).
 
 ## Step 11: Demo — Turn the Flag ON
 
-1. FME → **Feature Flags** → `new_checkout_banner` → `production`
-2. Set the **default rule** to serve **on**
+1. FME → **Feature Flags** → `new_checkout_banner` → `production` → **Definition**
+2. Change **"Select the default treatment"** from `off` to **on** → **Review changes** → **Save**
 3. Refresh the app → the green banner appears **instantly** — no redeploy
 
 ```
-treatment off → refresh → no banner
-treatment on  → refresh → "🎉 NEW: Faster one-click checkout is here!"
+default treatment off → refresh → no banner
+default treatment on  → refresh → "🎉 NEW: Faster one-click checkout is here!"
 ```
 
 ---
 
 ## Step 12: Demo — Targeting (one user)
 
-1. In the flag → **Targeting** → add an **individual target**: serve **on** to key `dev-user`
-2. Test in the browser (the app passes `?user=` as the Split key):
+1. In the flag → **Definition** → **Targeting** → **Individual targets**
+2. Add key `dev-user` → serve treatment **on** → **Review changes** → **Save**
+3. Test in the browser (the app passes `?user=` as the FME key):
    - `http://LB-URL/?user=dev-user` → banner ON
-   - `http://LB-URL/?user=random` → banner OFF
+   - `http://LB-URL/?user=random` → banner OFF (default off)
 
 ---
 
 ## Step 13: Demo — Percentage Rollout (10% → 100%)
 
-1. In the flag's default rule → set a **percentage split**: 10% `on` / 90% `off`
-2. Different `?user=` keys get bucketed consistently — some see it, most don't
-3. Increase to 50%, then 100%
+1. In the flag → **Targeting** → **Default rule** → set a **percentage split**: 10% `on` / 90% `off`
+2. **Review changes** → **Save**
+3. Different `?user=` keys get bucketed consistently — some see it, most don't
+4. Increase to 50%, then 100%
 
 > FME buckets by the key you pass to `getTreatment`, so the same user always gets the same treatment at a given percentage.
 
@@ -197,7 +203,7 @@ treatment on  → refresh → "🎉 NEW: Faster one-click checkout is here!"
 
 ## Step 14: Demo — Kill Switch
 
-1. Pretend the feature has a bug → set the flag's default rule back to **off** (or use **Kill**)
+1. Pretend the feature has a bug → change the **default treatment** back to **off** → **Review changes** → **Save**
 2. Refresh → the banner disappears **instantly for everyone** — no rollback pipeline, no redeploy
 
 ---
