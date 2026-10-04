@@ -101,4 +101,8 @@ resource "aws_eks_access_policy_association" "bastion_admin" {
   access_scope {
     type = "cluster"
   }
+
+  # Must wait for the access entry to exist first — otherwise AWS returns
+  # ResourceNotFoundException (the entry isn't registered yet).
+  depends_on = [aws_eks_access_entry.bastion]
 }
