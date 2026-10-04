@@ -1,41 +1,38 @@
-// Episode 12 — Harness Feature Management & Experimentation demo app
-// A tiny web app whose "new checkout banner" feature is controlled by a
-// Harness Feature Flag. Toggle the flag in Harness → the app changes LIVE,
-// with NO redeploy. That is the whole point of feature management.
+// Episode 12 — Harness Feature Management & Experimentation (FME) demo app
+// FME is the Split-based product. We use the Split SDK (@splitsoftware/splitio).
+// The "new_checkout_banner" flag is evaluated with getTreatment -> "on" / "off".
+// Toggle targeting rules in Harness FME and the app changes LIVE, no redeploy.
 const express = require("express");
-const { CfClient, Config } = require("@harnessio/ff-nodejs-server-sdk");
+const { SplitFactory } = require("@splitsoftware/splitio");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ← CHANGE: your Harness Feature Flags SERVER SDK key (from AWS SM / env, never hardcode)
-const FF_SDK_KEY = process.env.HARNESS_FF_SDK_KEY || "";
+// ← CHANGE: FME server-side SDK key (from Harness Secret Manager / env, never hardcode)
+const FME_SDK_KEY = process.env.HARNESS_FME_SDK_KEY || "localhost";
 
-// Initialize the Harness Feature Flags client
-let ffClient = null;
-if (FF_SDK_KEY) {
-    ffClient = new CfClient(FF_SDK_KEY, new Config({ enableStream: true }));
+// Create the Split factory once (singleton) and reuse the client everywhere
+const factory = SplitFactory({
+    core: { authorizationKey: FME_SDK_KEY },
+});
+const client = factory.client();
+
+let sdkReady = false;
+client.on(client.Event.SDK_READY, () => {
+    sdkReady = true;
+    console.log("FME SDK ready");
+});
+
+// Evaluate the flag for a given user key. Returns "on" / "off" / "control".
+function evaluateBanner(userKey) {
+    // control = SDK not ready / flag not found → treat as OFF (safe default)
+    return client.getTreatment(userKey, "new_checkout_banner");
 }
 
-// A target represents WHO is asking (used for targeting + percentage rollout)
-function targetFor(req) {
-    return {
-        identifier: req.query.user || "anonymous",
-        name: req.query.user || "anonymous",
-    };
-}
-
-app.get("/", async (req, res) => {
-    let showBanner = false; // default (flag OFF) — safe fallback if SDK not ready
-
-    if (ffClient) {
-        // "new_checkout_banner" is the flag identifier we create in Harness
-        showBanner = await ffClient.boolVariation(
-            "new_checkout_banner",
-            targetFor(req),
-            false // default value if the flag can't be evaluated
-        );
-    }
+app.get("/", (req, res) => {
+    const userKey = req.query.user || "anonymous";
+    const treatment = sdkReady ? evaluateBanner(userKey) : "control";
+    const showBanner = treatment === "on";
 
     res.send(`
     <html><body style="font-family: sans-serif; text-align:center; padding:40px;">
@@ -44,7 +41,7 @@ app.get("/", async (req, res) => {
             ? '<div style="background:#0a7;color:#fff;padding:20px;border-radius:8px;">🎉 NEW: Faster one-click checkout is here!</div>'
             : "<p>Welcome to the store.</p>"
         }
-      <p><small>new_checkout_banner flag = <b>${showBanner ? "ON" : "OFF"}</b></small></p>
+      <p><small>new_checkout_banner treatment = <b>${treatment}</b> (user: ${userKey})</small></p>
     </body></html>
   `);
 });

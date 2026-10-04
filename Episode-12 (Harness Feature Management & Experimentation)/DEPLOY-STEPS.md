@@ -1,12 +1,14 @@
-# Episode 12: Harness Feature Management — Deployment Steps
+# Episode 12: Harness Feature Management & Experimentation (FME) — Deployment Steps
 
 ## What We Are Doing
 
-Deploy an app once, then control a feature with a **Feature Flag** — turn it on for developers, then a % of users, then everyone, and off instantly if needed. No redeploy.
+Deploy an app once, then control a feature with an **FME feature flag** — turn it on for a user, then a % of users, then everyone, and off instantly if needed. No redeploy.
 
 ```
-Deploy (flag OFF) → Developers → 10% users → Everyone → Kill switch OFF
+Deploy (treatment OFF) → one user ON → 10% ON → 100% ON → kill switch OFF
 ```
+
+> **Note:** Your account uses **Feature Management & Experimentation (FME)** — the Split-based module (nav shows Rollout Board, Experiments, Segments, Metrics, FME Settings). FME uses the **Split SDK** (`@splitsoftware/splitio`) and "treatments" (`on`/`off`/`control`), not the old FF SDK.
 
 ---
 
@@ -21,119 +23,103 @@ Deploy (flag OFF) → Developers → 10% users → Everyone → Kill switch OFF
 
 ---
 
-## Step 1: Enable Feature Flags Module
+## Step 1: Open the FME Module
 
 1. Login to Harness → https://app.harness.io
-2. Module switcher (left) → select **Feature Flags**
-3. If prompted, click **Enable Feature Flags** for your project
+2. Module switcher (top-left grid) → select **Feature Management & Experimentation**
+3. Select your project (e.g. `Harness-CI-CD-Zero-to-Hero`)
 
 ---
 
 ## Step 2: Create an Environment
 
-1. In your project → **Feature Flags** → **Environments** → **Create an Environment**
-2. Enter a **Name**: `production` (Harness auto-generates the identifier)
-3. Select **Environment Type**: **Production** → click **Create**
+1. Left nav → **Environments** → **Create Environment** (or **+ New**)
+2. Name: `production`
+3. Type: **Production** → **Create**
 
-> Flags are shared across environments but toggled independently — ON in one, OFF in another.
+> FME flags are evaluated per environment — a flag can be ON in one env, OFF in another.
 
 ---
 
-## Step 3: Create an SDK Key (Server type)
+## Step 3: Create a Server-Side SDK Key
 
-1. Open the `production` environment → **Settings** → **Create SDK Key**
-2. **Name**: `ff-server-key`
-3. **Key Type**: **Server** (our Node.js app is server-side)
-4. Click **Create**
-5. **Copy and store the Secret now** — Harness redacts it once you leave the page. You'll paste it into the Harness Secret Manager in Step 5.
+1. Left nav → **FME Settings** → **SDK Keys** (API Keys)
+2. Click **Create SDK Key** / **+ API Key**
+3. Fill in:
+   - Name: `fme-server-key`
+   - Environment: `production`
+   - Type: **Server-side**
+4. Click **Create** → **copy the key now** (store it; you'll paste it into the Harness Secret Manager in Step 5)
 
-> Server SDK key = backend apps. Client SDK key = browser/mobile. We use Server.
+> Server-side key = backend apps (our Node.js app). Client-side = browser/mobile.
 
 ---
 
 ## Step 4: Create the Feature Flag
 
-1. **Feature Flags** → **Flags** → **+ New Flag** → select **Boolean**
+1. Left nav → **Feature Flags** → **Create Feature Flag**
 2. Fill in:
-   - **Name**: `new_checkout_banner`
-   - **Identifier**: `new_checkout_banner` (must exactly match the code in `app.js`)
-   - **Flag Type**: Boolean (ON / OFF)
-3. Set the **variation when the flag is ON** = true, **OFF** = false
-4. In **Default rules**, set the flag **OFF** for `production` (nobody sees the banner until you decide)
-5. Click **Save** / **Create**
+   - Name: `new_checkout_banner` (must exactly match the code in `app.js`)
+   - Traffic type: `user`
+   - Treatments: **on** and **off** (FME defaults to these two)
+3. In **Default rule / targeting** for `production`, set the default treatment to **off** (nobody sees the banner yet)
+4. Click **Save** / **Create**
 
-> The identifier `new_checkout_banner` must exactly match what the app checks in `app.js`.
+> The flag name `new_checkout_banner` must match `client.getTreatment(user, "new_checkout_banner")` in the app.
 
 ---
 
 ## Step 5: Store the SDK Key in the Harness Secret Manager
 
-We use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
+Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 
 1. Harness → **Project Settings → Secrets → + New Secret → Text**
 2. Secret Manager: **Harness Built-in Secret Manager** (default)
-3. Fill in:
-   - Secret Name / ID: `harness_ff_sdk_key`
-   - Value: the **Server SDK key** from Step 2
-4. Click **Save**
+3. Secret Name / ID: `harness_fme_sdk_key`
+4. Value: the **server-side SDK key** from Step 3 → **Save**
 
-> How it flows: the Helm chart's `values.yaml` reads it with `<+secrets.getValue("harness_ff_sdk_key")>` → Helm templates it into `templates/secret.yaml` (`ff-secrets`) → `HelmDeploy` applies it. Masked in logs, never hardcoded.
+> Flow: the chart's `values.yaml` reads it via `<+secrets.getValue("harness_fme_sdk_key")>` → Helm templates it into `templates/secret.yaml` (`ff-secrets`) → `HelmDeploy` applies it → pod reads `HARNESS_FME_SDK_KEY`. Masked in logs, never hardcoded.
 
 ---
 
 ## Step 6: Create the Service (`feature_flags_app`)
 
 1. Harness → **Deployments → Services → + New Service**
-2. Fill in:
-   - Name: `feature-flags-app` → confirm the **Id** shows `feature_flags_app`
-   - Click **Save**
-3. Open the service → **Configuration** tab → **Deployment Type: Kubernetes**, then enable **Helm Chart** (NativeHelm)
-4. Under **Manifests** → **+ Add Manifest**:
-   - Manifest Type: **Helm Chart** → **Continue**
-   - Store: **Github** → connector `account.Github`
+   - Name: `feature-flags-app` → confirm **Id** = `feature_flags_app` → **Save**
+2. **Configuration** → **Deployment Type: Kubernetes**, enable **Helm Chart** (NativeHelm)
+3. **Manifests → + Add Manifest → Helm Chart**:
+   - Store: **Github** → `account.Github`
    - Manifest Name: `feature-flags-app`
    - Branch: `master`
    - **Chart Path:** `Episode-12 (Harness Feature Management & Experimentation)/feature-flags-app/helm/feature-flags-app`
-   - Helm Version: **V3**
-   - Click **Submit**
-5. Under **Artifacts** → **+ Add Primary Artifact**:
-   - Type: **ECR** → connector `account.aws_account`
-   - Region: your region (e.g. `us-east-1`)
-   - **Artifact Source Identifier:** `ecr_image` (must match the pipeline)
-   - Image Path: `feature-flags-app`
-   - Tag: `<+input>`
-   - Click **Submit**
-6. Click **Save** on the service.
+   - Helm Version: **V3** → **Submit**
+4. **Artifacts → + Add Primary Artifact → ECR**:
+   - Connector `account.aws_account`, Region your region
+   - **Artifact Source Id:** `ecr_image` (must match the pipeline)
+   - Image Path: `feature-flags-app`, Tag: `<+input>` → **Submit**
+5. **Save**
 
-> Service type is **Kubernetes with Helm Chart (NativeHelm)** — the pipeline uses `HelmDeploy`/`HelmRollback`, not `K8sRollingDeploy`.
-
-> NativeHelm resolves `<+artifact.image>` and `<+secrets.getValue("harness_ff_sdk_key")>` in the chart's `values.yaml`, then Helm templates them into the deployment/secret.
+> NativeHelm resolves `<+artifact.image>` and `<+secrets.getValue("harness_fme_sdk_key")>` in the chart's `values.yaml`, then Helm templates them into the manifests.
 
 ---
 
 ## Step 7: Create the CD Environment (`production`)
 
-> This is the **Deployment** environment (CD module), separate from the Feature Flags environment in Step 2 — same name, different module.
+> This is the **Deployment** (CD) environment, separate from the FME environment in Step 2 — same name, different module.
 
 1. Harness → **Deployments → Environments → + New Environment**
-2. Fill in:
-   - Name: `production` → confirm the **Id** shows `production`
-   - Environment Type: **Production**
-   - Click **Save**
+   - Name: `production` → **Id** = `production` → Type: **Production** → **Save**
 
 ---
 
 ## Step 8: Create the Infrastructure (`k8sdelegate`)
 
-1. Open the `production` environment → **Infrastructure Definitions** tab → **+ Infrastructure Definition**
+1. Open the `production` environment → **Infrastructure Definitions** → **+ Infrastructure Definition**
 2. Fill in:
-   - Name: `k8sdelegate` → confirm the **Id** shows `k8sdelegate`
+   - Name: `k8sdelegate` → **Id** = `k8sdelegate`
    - Deployment Type: **Kubernetes**
-   - Connector: your Kubernetes connector (e.g. `k8sdelegate` from Episode 6)
-   - **Namespace:** `feature-flags`
-   - Click **Save**
-
-> Reuse the same K8s connector and EKS cluster from Episodes 6-10. No new cluster needed.
+   - Connector: your K8s connector (from Episode 6)
+   - **Namespace:** `feature-flags` → **Save**
 
 ---
 
@@ -146,9 +132,9 @@ We use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 
 The pipeline has two stages:
 - **build-and-push** (CI): unit tests → Create ECR Repo → BuildAndPushECR
-- **deploy-helm** (CD): HelmDeploy (renders secret + deployment + service from the chart) → Health Check
+- **deploy-helm** (CD): HelmDeploy (chart renders secret + deployment + service) → Health Check
 
-> The pipeline references `serviceRef: feature_flags_app`, `environmentRef: production`, `infrastructureDefinitions: k8sdelegate` — the exact IDs you created in Steps 6-8. If your IDs differ, update them in the pipeline YAML.
+> The pipeline references `serviceRef: feature_flags_app`, `environmentRef: production`, `infrastructureDefinitions: k8sdelegate` — the IDs from Steps 6-8. Update them in the YAML if yours differ.
 
 ---
 
@@ -158,55 +144,50 @@ The pipeline has two stages:
 2. Flow:
    ```
    Stage 1 (build-and-push): Unit Tests → Create ECR Repo → Push Image
-   Stage 2 (deploy-helm): HelmDeploy (chart renders secret + deployment + service) → Health Check
+   Stage 2 (deploy-helm): HelmDeploy (secret + deployment + service) → Health Check
    ```
 3. After deploy: `kubectl get svc -n feature-flags` → open the LoadBalancer URL
 
-The store page loads with the banner **hidden** — the flag is OFF.
+The store page loads with the banner **hidden** (treatment = off / control).
 
 ---
 
 ## Step 11: Demo — Turn the Flag ON
 
-1. Harness → Feature Flags → `new_checkout_banner`
-2. Toggle it **ON** for `production`
-3. Refresh the app in the browser → the green banner appears **instantly** — no redeploy
+1. FME → **Feature Flags** → `new_checkout_banner` → `production`
+2. Set the **default rule** to serve **on**
+3. Refresh the app → the green banner appears **instantly** — no redeploy
 
 ```
-Flag OFF → refresh → no banner
-Flag ON  → refresh → "🎉 NEW: Faster one-click checkout is here!"
+treatment off → refresh → no banner
+treatment on  → refresh → "🎉 NEW: Faster one-click checkout is here!"
 ```
 
 ---
 
-## Step 12: Demo — Targeting (developers only)
+## Step 12: Demo — Targeting (one user)
 
-1. In the flag → **Targeting** → add a target rule
-2. Serve **ON** to a specific target (e.g. identifier `dev-user`)
-3. Test:
+1. In the flag → **Targeting** → add an **individual target**: serve **on** to key `dev-user`
+2. Test in the browser (the app passes `?user=` as the Split key):
    - `http://LB-URL/?user=dev-user` → banner ON
    - `http://LB-URL/?user=random` → banner OFF
-
-> The app passes `?user=` as the flag target, so Harness decides per-user.
 
 ---
 
 ## Step 13: Demo — Percentage Rollout (10% → 100%)
 
-1. In the flag → **Percentage Rollout**
-2. Set 10% ON / 90% OFF → some users see it, most don't
+1. In the flag's default rule → set a **percentage split**: 10% `on` / 90% `off`
+2. Different `?user=` keys get bucketed consistently — some see it, most don't
 3. Increase to 50%, then 100%
-4. This is how you release gradually and catch problems before everyone is affected
+
+> FME buckets by the key you pass to `getTreatment`, so the same user always gets the same treatment at a given percentage.
 
 ---
 
 ## Step 14: Demo — Kill Switch
 
-1. Pretend the feature has a bug
-2. Toggle the flag **OFF**
-3. Refresh → the banner disappears **instantly for everyone** — no rollback pipeline, no redeploy
-
-> This is the safety net: a bad release is a 1-second flag flip, not a 15-minute rollback.
+1. Pretend the feature has a bug → set the flag's default rule back to **off** (or use **Kill**)
+2. Refresh → the banner disappears **instantly for everyone** — no rollback pipeline, no redeploy
 
 ---
 
@@ -215,7 +196,7 @@ Flag ON  → refresh → "🎉 NEW: Faster one-click checkout is here!"
 ```bash
 kubectl delete namespace feature-flags
 ```
-Delete the flag and environment in Harness if you want a clean slate. No AWS infra to destroy beyond the app.
+Delete the flag/environment/SDK key in FME if you want a clean slate. No AWS infra beyond the app.
 
 ---
 
@@ -223,11 +204,11 @@ Delete the flag and environment in Harness if you want a clean slate. No AWS inf
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| Banner never appears | Flag identifier mismatch | Must be exactly `new_checkout_banner` in code + Harness |
-| App shows flag OFF always | SDK key missing/wrong | Check the `harness_ff_sdk_key` secret in Harness + the `ff-secrets` K8s secret |
-| SDK can't connect | Client vs Server key | Use a **Server** SDK key for the Node.js app |
-| Changes not instant | Streaming disabled | SDK uses `enableStream: true` (already set in app.js) |
-| Pod CrashLoop | Secret not mounted | Confirm `ff-secrets` exists in `feature-flags` namespace |
+| Treatment always `control` | SDK not ready / key wrong | Check `harness_fme_sdk_key` secret + `ff-secrets` K8s secret; must be a **server-side** key |
+| Banner never appears | Flag name mismatch | Must be exactly `new_checkout_banner` in code + FME |
+| App can't reach FME | Client vs server key | Use a **server-side** SDK key for the Node.js app |
+| Changes not instant | SDK refresh | Split SDK polls ~every few seconds; wait a moment and refresh |
+| Pod CrashLoop | Secret not mounted | Confirm `ff-secrets` exists in the `feature-flags` namespace (HelmDeploy creates it) |
 
 ---
 
@@ -236,12 +217,13 @@ Delete the flag and environment in Harness if you want a clean slate. No AWS inf
 | | Episode 11 | Episode 12 |
 |---|---|---|
 | Focus | Hosting & reviewing code | Releasing features safely |
-| Release method | Merge + deploy | **Flip a flag — no deploy** |
-| Rollback | Revert PR + redeploy | **Turn flag OFF instantly** |
-| Rollout control | All at once | **Gradual % + targeting** |
+| Product | Harness Code | **FME (Feature Management & Experimentation)** |
+| Release method | Merge + deploy | **Change a treatment — no deploy** |
+| Rollback | Revert PR + redeploy | **Set treatment off instantly** |
+| Rollout control | All at once | **Targeting + % rollout + experiments** |
 
 ---
 
 ## Key Takeaway
 
-> Feature flags separate **deploy** from **release**. The code ships once; you decide who sees the feature and when — and you can turn it off in one second if it misbehaves. That's the safest way to release in production.
+> FME separates **deploy** from **release**. The code ships once; you decide who sees the feature and when via treatments — and you can turn it off in one second if it misbehaves. FME also adds experiments and metrics on top, so you can measure a feature's impact, not just toggle it.

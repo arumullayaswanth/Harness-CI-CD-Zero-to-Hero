@@ -9,8 +9,8 @@ replicaCount: 2
 image: <+artifact.image>
 pullPolicy: IfNotPresent
 
-# Feature Flags Server SDK key — from the Harness built-in Secret Manager (masked, not hardcoded)
-harnessFfSdkKey: <+secrets.getValue("harness_ff_sdk_key")>
+# FME server-side SDK key — from the Harness built-in Secret Manager (masked, not hardcoded)
+harnessFmeSdkKey: <+secrets.getValue("harness_fme_sdk_key")>
 
 service:
   type: LoadBalancer

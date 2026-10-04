@@ -76,7 +76,7 @@ Episode-12 (Harness Feature Management & Experimentation)/
     │   └── feature-flags-pipeline.yaml  ← CI (build+ECR) + CD (NativeHelm deploy) pipeline
     └── helm/feature-flags-app/          ← Helm chart
         ├── Chart.yaml
-        ├── values.yaml                  ← <+artifact.image> + <+secrets.getValue("harness_ff_sdk_key")>
+        ├── values.yaml                  ← <+artifact.image> + <+secrets.getValue("harness_fme_sdk_key")>
         └── templates/
             ├── secret.yaml              ← ff-secrets (SDK key)
             ├── deployment.yaml          ← Deployment
@@ -104,7 +104,7 @@ At no point do you rebuild the image or run the pipeline again. The app just rea
 | Category | Technology |
 |----------|-----------|
 | **Feature Flags** | Harness Feature Management & Experimentation (FME) |
-| **SDK** | @harnessio/ff-nodejs-server-sdk |
+| **SDK** | @splitsoftware/splitio (FME is Split-based) |
 | **App** | Node.js 20 + Express |
 | **Secrets** | Harness built-in Secret Manager (SDK key) |
 | **CI/CD** | Harness CI (build+ECR) + CD (NativeHelm: HelmDeploy/HelmRollback) |

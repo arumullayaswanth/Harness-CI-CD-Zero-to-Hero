@@ -18,7 +18,7 @@
 #   serviceRef: feature_flags_app
 #   environmentRef: production
 #   infrastructureDefinitions: k8sdelegate
-#   secret: harness_ff_sdk_key   (Server SDK key from Feature Flags env)
+#   secret: harness_fme_sdk_key   (server-side SDK key from FME environment)
 # ============================================
 pipeline:
   name: episode12-feature-flags

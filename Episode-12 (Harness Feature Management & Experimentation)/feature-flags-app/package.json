@@ -1,7 +1,7 @@
 {
   "name": "feature-flags-app",
   "version": "1.0.0",
-  "description": "Episode 12 - Harness Feature Management demo app",
+  "description": "Episode 12 - Harness Feature Management & Experimentation (FME) demo app",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "@harnessio/ff-nodejs-server-sdk": "^1.6.0"
+    "@splitsoftware/splitio": "^11.4.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",

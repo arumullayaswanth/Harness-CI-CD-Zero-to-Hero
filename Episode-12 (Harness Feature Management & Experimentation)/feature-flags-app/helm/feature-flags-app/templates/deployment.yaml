@@ -26,13 +26,13 @@ spec:
           ports:
             - containerPort: {{ .Values.service.targetPort }}
               name: http
-          # SDK key injected from the ff-secrets Secret
+          # FME SDK key injected from the ff-secrets Secret
           env:
-            - name: HARNESS_FF_SDK_KEY
+            - name: HARNESS_FME_SDK_KEY
               valueFrom:
                 secretKeyRef:
                   name: ff-secrets
-                  key: HARNESS_FF_SDK_KEY
+                  key: HARNESS_FME_SDK_KEY
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:
