@@ -71,16 +71,12 @@ Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 
 ## Step 5: Create the Feature Flag
 
-1. Left nav → **Feature Flags** → **Create Feature Flag**
-2. Fill in:
-   - Name: `new_checkout_banner` (must exactly match the code in `app.js`)
-   - Traffic type: `user`
-   - Treatments: **on** and **off** (FME defaults to these two)
-3. In **Default rule / targeting** for `production`, set the default treatment to **off** (nobody sees the banner yet)
-4. Click **Save** / **Create**
+1. **Feature Flags** → **Create feature flag**
+2. **Name:** `new_checkout_banner` (must match the code in `app.js`)
+3. **Traffic Type:** `user` → **Create**
+4. Open the flag → environment `production` → set the **default rule** to **off** → **Save**
 
 > The flag name `new_checkout_banner` must match `client.getTreatment(user, "new_checkout_banner")` in the app.
-
 ---
 
 ## Step 6: Create the Service (`feature_flags_app`)
