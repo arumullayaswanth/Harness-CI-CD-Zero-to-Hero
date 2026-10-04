@@ -9,8 +9,10 @@ replicaCount: 2
 image: <+artifact.image>
 pullPolicy: IfNotPresent
 
-# FME server-side SDK key — from the Harness built-in Secret Manager (masked, not hardcoded)
-harnessFmeSdkKey: <+secrets.getValue("harness_fme_sdk_key")>
+# FME server-side SDK key — injected at deploy time by the pipeline's HelmDeploy
+# step via --set harnessFmeSdkKey=<+secrets.getValue("harness_fme_sdk_key")>.
+# Left empty here so the Git-stored values file has no secret expression to resolve.
+harnessFmeSdkKey: ""
 
 service:
   type: LoadBalancer

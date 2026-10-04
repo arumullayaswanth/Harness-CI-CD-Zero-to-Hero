@@ -147,10 +147,12 @@ pipeline:
                     skipDryRun: false
                     commandFlags:
                       # --create-namespace creates feature-flags namespace if missing
+                      # --set injects the FME SDK key from the Harness secret at deploy time
+                      # (resolving the secret here is more reliable than inside values.yaml)
                       - commandType: Install
-                        flag: "--create-namespace"
+                        flag: '--create-namespace --set harnessFmeSdkKey=<+secrets.getValue("harness_fme_sdk_key")>'
                       - commandType: Upgrade
-                        flag: "--create-namespace"
+                        flag: '--create-namespace --set harnessFmeSdkKey=<+secrets.getValue("harness_fme_sdk_key")>'
 
               - step:
                   type: ShellScript
