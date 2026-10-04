@@ -15,7 +15,7 @@
 #   connectorRef: account.Github
 #   repoName: Harness-CI-CD-Zero-to-Hero
 #   connectorRef: account.aws_account
-#   serviceRef: feature_flags_app
+#   serviceRef: featureflagsapp
 #   environmentRef: production
 #   infrastructureDefinitions: k8sdelegate
 #   secret: harness_fme_sdk_key   (server-side SDK key from FME environment)
@@ -116,7 +116,7 @@ pipeline:
           deploymentType: NativeHelm
           service:
             # CHANGE THIS: Your service ID (create in CD → Services → Kubernetes + Helm Chart)
-            serviceRef: feature_flags_app
+            serviceRef: featureflagsapp
             serviceInputs:
               serviceDefinition:
                 type: NativeHelm

@@ -83,20 +83,24 @@ Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 
 # PART B — Deploy the app (CD)
 
-## Step 6: Create the Service (`feature_flags_app`)
+## Step 6: Create the Service (`featureflagsapp`)
 
 1. Harness → **Deployments → Services → + New Service**
-   - Name: `feature-flags-app` → confirm **Id** = `feature_flags_app` → **Save**
-2. **Configuration** → **Deployment Type: Kubernetes**, enable **Helm Chart** (NativeHelm)
-3. **Manifests → + Add Manifest → Helm Chart**:
-   - Store: **Github** → `account.Github`
-   - Manifest Name: `feature-flags-app`
-   - Branch: `master`
+   - Name: `feature-flags-app` → confirm **Id** = `featureflagsapp` → **Save**
+2. **Configuration** → **Deployment Type: Native Helm**
+3. **Manifests → + Add Manifest**:
+   - Manifest Type: **Helm Chart**
+   - Manifest Source / Store: **Github** → `account.Github`
+   - **Manifest Identifier:** `featureflagsapp`
+   - **Git Fetch Type:** `Latest from Branch`
+   - **Branch:** `master`
    - **Chart Path:** `Episode-12 (Harness Feature Management & Experimentation)/feature-flags-app/helm/feature-flags-app`
-   - Helm Version: **V3** → **Submit**
-4. **Artifacts → + Add Primary Artifact → ECR**:
+   - **Helm Version:** `Version 3`
+   - Values.yaml: leave blank (the chart already includes its own `values.yaml`)
+   - **Submit**
+4. **Artifacts → + Add Artifact Source → ECR**:
    - Connector `account.aws_account`, Region your region
-   - **Artifact Source Id:** `ecr_image` (must match the pipeline)
+   - **Artifact Source Identifier:** `ecr_image` (must match the pipeline)
    - Image Path: `feature-flags-app`, Tag: `<+input>` → **Submit**
 5. **Save**
 
@@ -118,9 +122,13 @@ Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 1. Open the `production` environment → **Infrastructure Definitions** → **+ Infrastructure Definition**
 2. Fill in:
    - Name: `k8sdelegate` → **Id** = `k8sdelegate`
-   - Deployment Type: **Kubernetes**
-   - Connector: `k8s-delegate` (ID `k8sdelegate`, from Episode 6)
+   - Setup: **Inline**
+   - **Deployment Type: Native Helm** (must MATCH the Service in Step 6 — not Kubernetes)
+   - Infrastructure Type: **Direct Connection → Kubernetes**
+   - **Connector:** `k8sdelegate` (from Episode 6)
    - **Namespace:** `feature-flags` → **Save**
+
+> ⚠️ The Infrastructure Deployment Type must be the **same** as the Service — both **Native Helm**. A Native Helm service + Kubernetes infra will fail to deploy.
 
 ---
 
@@ -135,7 +143,7 @@ The pipeline has two stages:
 - **build-and-push** (CI): unit tests → Create ECR Repo → BuildAndPushECR
 - **deploy-helm** (CD): HelmDeploy (chart renders secret + deployment + service) → Health Check
 
-> The pipeline references `serviceRef: feature_flags_app`, `environmentRef: production`, `infrastructureDefinitions: k8sdelegate` — the IDs from Steps 6-8. Update them in the YAML if yours differ.
+> The pipeline references `serviceRef: featureflagsapp`, `environmentRef: production`, `infrastructureDefinitions: k8sdelegate` — the IDs from Steps 6-8. Update them in the YAML if yours differ.
 
 ---
 
