@@ -33,29 +33,43 @@ Deploy (treatment OFF) → one user ON → 10% ON → 100% ON → kill switch OF
 
 ## Step 2: Create an Environment
 
-1. Left nav → **Environments** → **Create Environment** (or **+ New**)
-2. Name: `production`
-3. Type: **Production** → **Create**
+1. Left nav → **FME Settings** → **Projects** → **Environments** tab
+2. Click **Create environment** (top-right)
+3. Name: `production`, Type: **Production** → **Create**
+4. You'll see it listed with an **ID** — click **Copy** to note the environment ID
 
-> FME flags are evaluated per environment — a flag can be ON in one env, OFF in another.
+> FME flags are evaluated per environment — a flag can be ON in one env, OFF in another. (You may already have `production` / `Prod-...` / `Stg-...` environments listed.)
 
 ---
 
 ## Step 3: Create a Server-Side SDK Key
 
-1. Left nav → **FME Settings** → **SDK Keys** (API Keys)
-2. Click **Create SDK Key** / **+ API Key**
+1. **FME Settings** → **Projects** → **SDK API Keys** tab
+2. Click **Create** (SDK API Key)
 3. Fill in:
    - Name: `fme-server-key`
-   - Environment: `production`
+   - Environment: `production` (the same env where your flag will live)
    - Type: **Server-side**
-4. Click **Create** → **copy the key now** (store it; you'll paste it into the Harness Secret Manager in Step 5)
+4. Click **Create** → **copy the key now** (you'll paste it into the Harness Secret Manager in Step 5)
 
-> Server-side key = backend apps (our Node.js app). Client-side = browser/mobile.
+> Server-side key = backend apps (our Node.js app). Client-side = browser/mobile. The key must belong to the SAME environment as the flag.
 
 ---
 
-## Step 4: Create the Feature Flag
+## Step 4: Store the SDK Key in the Harness Secret Manager
+
+Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
+
+1. Harness → **Project Settings → Secrets → + New Secret → Text**
+2. Secret Manager: **Harness Built-in Secret Manager** (default)
+3. Secret Name / ID: `harness_fme_sdk_key`
+4. Value: the **server-side SDK key** from Step 3 → **Save**
+
+> Flow: the chart's `values.yaml` reads it via `<+secrets.getValue("harness_fme_sdk_key")>` → Helm templates it into `templates/secret.yaml` (`ff-secrets`) → `HelmDeploy` applies it → pod reads `HARNESS_FME_SDK_KEY`. Masked in logs, never hardcoded.
+
+---
+
+## Step 5: Create the Feature Flag
 
 1. Left nav → **Feature Flags** → **Create Feature Flag**
 2. Fill in:
@@ -66,19 +80,6 @@ Deploy (treatment OFF) → one user ON → 10% ON → 100% ON → kill switch OF
 4. Click **Save** / **Create**
 
 > The flag name `new_checkout_banner` must match `client.getTreatment(user, "new_checkout_banner")` in the app.
-
----
-
-## Step 5: Store the SDK Key in the Harness Secret Manager
-
-Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
-
-1. Harness → **Project Settings → Secrets → + New Secret → Text**
-2. Secret Manager: **Harness Built-in Secret Manager** (default)
-3. Secret Name / ID: `harness_fme_sdk_key`
-4. Value: the **server-side SDK key** from Step 3 → **Save**
-
-> Flow: the chart's `values.yaml` reads it via `<+secrets.getValue("harness_fme_sdk_key")>` → Helm templates it into `templates/secret.yaml` (`ff-secrets`) → `HelmDeploy` applies it → pod reads `HARNESS_FME_SDK_KEY`. Masked in logs, never hardcoded.
 
 ---
 
