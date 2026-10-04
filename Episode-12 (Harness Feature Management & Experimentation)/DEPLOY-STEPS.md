@@ -16,12 +16,14 @@ Deploy (treatment OFF) → one user ON → 10% ON → 100% ON → kill switch OF
 
 | What | Episode | Link |
 |------|---------|------|
-| Harness account + project | 1 | [Episode 1](../Episode-01/hello-world-app/DEPLOY-STEPS.md) |
+| Harness account + project | 1 | [Episode 1 — Step 2](../Episode-01/hello-world-app/DEPLOY-STEPS.md#step-2-open-harness) |
 | GitHub connector (`account.Github`) | 1 | [Episode 1 — Step 3](../Episode-01/hello-world-app/DEPLOY-STEPS.md#step-3-create-a-github-connector-first-time-only) |
-| EKS cluster + K8s connector | 6 | [Episode 6](../Episode-06/README.md) |
-| ECR + AWS OIDC connector | 3-4 | [Episode 3](../Episode-03/README.md) |
+| AWS OIDC connector (`account.aws_account`) + ECR | 3 | [Episode 3 — Connector 3: AWS](../Episode-03/README.md#connector-3-aws--create-now-using-oidc--no-access-keys) |
+| EKS cluster + K8s connector | 6 | [Episode 6 — Kubernetes on EKS](../Episode-06/README.md#gocart-kubernetes-on-eks) |
 
 ---
+
+# PART A — Set up FME (flag + SDK key)
 
 ## Step 1: Open the FME Module
 
@@ -78,6 +80,8 @@ Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 
 > The flag name `new_checkout_banner` must match `client.getTreatment(user, "new_checkout_banner")` in the app.
 ---
+
+# PART B — Deploy the app (CD)
 
 ## Step 6: Create the Service (`feature_flags_app`)
 
@@ -148,6 +152,8 @@ The pipeline has two stages:
 The store page loads with the banner **hidden** (treatment = off / control).
 
 ---
+
+# PART C — Demo the flag (live, no redeploy)
 
 ## Step 11: Demo — Turn the Flag ON
 
