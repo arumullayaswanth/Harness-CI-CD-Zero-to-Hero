@@ -19,7 +19,7 @@ Deploy (treatment OFF) → one user ON → 10% ON → 100% ON → kill switch OF
 | Harness account + project | 1 | [Episode 1 — Step 2](../Episode-01/hello-world-app/DEPLOY-STEPS.md#step-2-open-harness) |
 | GitHub connector (`account.Github`) | 1 | [Episode 1 — Step 3](../Episode-01/hello-world-app/DEPLOY-STEPS.md#step-3-create-a-github-connector-first-time-only) |
 | AWS OIDC connector (`account.aws_account`) + ECR | 3 | [Episode 3 — Connector 3: AWS](../Episode-03/README.md#connector-3-aws--create-now-using-oidc--no-access-keys) |
-| EKS cluster + K8s connector | 6 | [Episode 6 — Kubernetes on EKS](../Episode-06/README.md#gocart-kubernetes-on-eks) |
+| EKS cluster + K8s Delegate | 6 | [Episode 6 — Step 3: Install Kubernetes Delegate](../Episode-06/gocart/DEPLOY-STEPS.md#step-3-install-kubernetes-delegate) |
 
 ---
 
@@ -119,7 +119,7 @@ Use the **built-in Harness Secret Manager** (no AWS SM, no ESO needed).
 2. Fill in:
    - Name: `k8sdelegate` → **Id** = `k8sdelegate`
    - Deployment Type: **Kubernetes**
-   - Connector: your K8s connector (from Episode 6)
+   - Connector: `k8s-delegate` (ID `k8sdelegate`, from Episode 6)
    - **Namespace:** `feature-flags` → **Save**
 
 ---
