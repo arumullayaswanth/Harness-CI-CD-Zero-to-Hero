@@ -1,0 +1,41 @@
+# Episode 13 — a deliberately OVER-PROVISIONED workload for the CCM demo.
+# It requests far more CPU/memory than nginx actually uses, so after a day or two
+# Harness CCM flags it with a "rightsizing" recommendation and shows it as mostly idle.
+# This is how you demonstrate "find waste" live.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cost-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: over-provisioned-app
+  namespace: cost-demo
+  labels:
+    app: over-provisioned-app
+    team: demo            # ← label used for cost allocation in CCM perspectives
+spec:
+  replicas: 3            # 3 copies of an idle nginx — wasteful on purpose
+  selector:
+    matchLabels:
+      app: over-provisioned-app
+  template:
+    metadata:
+      labels:
+        app: over-provisioned-app
+        team: demo
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          # Requests are WAY higher than nginx needs → CCM sees it as idle/over-provisioned
+          resources:
+            requests:
+              cpu: "1"        # asks for a full CPU, uses almost nothing
+              memory: "1Gi"   # asks for 1Gi, uses ~10Mi
+            limits:
+              cpu: "2"
+              memory: "2Gi"
