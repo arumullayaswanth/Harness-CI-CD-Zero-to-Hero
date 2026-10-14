@@ -19,7 +19,7 @@ pipeline:
   name: go-docker-delegate-pipeline
   identifier: go_docker_delegate_pipeline
   # CHANGE THIS: Your project ID
-  projectIdentifier: HarnessCICDZerotoHero
+  projectIdentifier: default_project
   # CHANGE THIS: Your org name
   orgIdentifier: default
   tags: {}

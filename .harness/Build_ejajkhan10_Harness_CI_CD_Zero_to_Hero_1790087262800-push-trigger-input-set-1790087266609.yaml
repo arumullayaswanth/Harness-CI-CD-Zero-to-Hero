@@ -1,0 +1,14 @@
+inputSet:
+  name: Build_ejajkhan10_Harness_CI_CD_Zero_to_Hero_1790087262800-push-trigger-input-set
+  identifier: Build_ejajkhan10_Harness_CI_CD_Zero_to_Hero_1790087262800pushtriggerinputset
+  orgIdentifier: default
+  projectIdentifier: HarnessCICDZerotoHero
+  pipeline:
+    identifier: Build_ejajkhan10_Harness_CI_CD_Zero_to_Hero_1790087262800
+    properties:
+      ci:
+        codebase:
+          build:
+            type: branch
+            spec:
+              branch: <+trigger.branch>

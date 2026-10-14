@@ -1,0 +1,14 @@
+inputSet:
+  name: Build_ejajkhan10_Harness_CI_CD_Zero_to_Hero_1790087262800-pr-trigger-input-set
+  identifier: Build_ejajkhan10_Harness_CI_CD_Zero_to_Hero_1790087262800prtriggerinputset
+  orgIdentifier: default
+  projectIdentifier: HarnessCICDZerotoHero
+  pipeline:
+    identifier: Build_ejajkhan10_Harness_CI_CD_Zero_to_Hero_1790087262800
+    properties:
+      ci:
+        codebase:
+          build:
+            type: PR
+            spec:
+              number: <+trigger.prNumber>
