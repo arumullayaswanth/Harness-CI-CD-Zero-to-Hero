@@ -85,16 +85,43 @@ Connect AWS → Enable K8s cost → Perspectives → Budget + Anomaly alert → 
 ## Step 3: Create the AWS Connector in CCM
 
 1. CCM → **Account Settings → Cloud Integration (Connectors) → + New Connector → AWS**
-2. Enter your **AWS Account ID**
-3. **Cost and Usage Report:** enter the 3 values from Step 2 — **report name** `harness-ccm-cur`, your **S3 bucket name**, and the **S3 path prefix** `ccm`
-4. **Features to enable:**
-   - **Cost Visibility** ✅ (always)
-   - **Resource Inventory Management / Recommendations** ✅ (for rightsizing)
-   - Optimization (AutoStopping) — optional
-5. Harness gives you a **CloudFormation template** → click the link → it creates a **cross-account IAM role** that lets Harness read the CUR bucket (read-only)
-6. Back in Harness → **Test Connection** → **Finish**
 
-> The CloudFormation template is the easy path — it creates the exact read-only role Harness needs. No manual IAM policy writing.
+**1. Overview**
+- **Connector Name:** `aws-ccm-connector`
+- **AWS account ID:** `713939171080`
+- **GovCloud:** **No**
+- Click **Continue**
+
+**2. Cost and Usage Report**
+- Select **CUR 1.0 (legacy)**
+- **Report name:** `harness-ccm-cur`
+- **S3 bucket name:** `harness-ccm-cur-713939171080`
+- Click **Continue**
+
+**3. Choose Requirements**
+- ✅ **Cost Visibility** (required)
+- ✅ **Resource Inventory Management**
+- ⬜ Optimization by AutoStopping
+- ⬜ Cloud Governance
+- ⬜ Commitment Orchestration
+- Click **Continue**
+
+**4. Create Cross Account Role**
+- Click **Launch Template on AWS console** (opens AWS CloudFormation)
+- ✅ Tick the IAM acknowledgement → **Create stack**
+- Wait for **CREATE_COMPLETE**
+- On the stack page, click the Outputs tab.
+- Copy the **Role ARN** from the **Outputs** tab
+- Back in Harness, paste it in **Cross Account Role ARN**
+- **External ID** is already filled in. Don't change it.
+- Click **Save and Continue**
+
+**5. Connection Test**
+- Wait for **Success** → **Finish**
+
+> **Error "CUR report validation failed / No CUR file found":**
+> 1. Check the bucket name in the connector is `harness-ccm-cur-713939171080`.
+> 2. Check S3 has the folder `ccm/harness-ccm-cur/`. If not, AWS has not delivered the first report yet. Wait up to 24 hours and test again.
 
 ---
 
