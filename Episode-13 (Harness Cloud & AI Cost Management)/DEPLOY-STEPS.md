@@ -33,16 +33,52 @@ Connect AWS → Enable K8s cost → Perspectives → Budget + Anomaly alert → 
 
 ## Step 2: Create a Cost & Usage Report (CUR) in AWS
 
-CCM reads your bill from a CUR file in S3.
+> ⏰ Do this one day before recording. AWS takes up to 24 hours to write the first report.
 
-1. AWS Console → **Billing → Cost & Usage Reports** → **Create report**
-2. Report name: `harness-ccm-cur`
-3. Include: **resource IDs** ✅
-4. Delivery: a new/existing **S3 bucket** (e.g. `harness-ccm-cur-<account-id>`)
-5. Time granularity: **Hourly**, Format: **Parquet** (or GZIP/CSV)
-6. Create
+### 2.1 Open the Create Report page
+1. Log in to the AWS Console.
+2. Search for **Billing and Cost Management** and open it.
+3. In the left menu, **click Legacy Pages** select **Cost & Usage Reports**.
+4. Click **Create report**.
 
-> AWS writes the first CUR within ~24 hours. CCM needs it to show real cost data.
+> A banner says this page is "pending deprecation". Ignore it. Do not click **Try new experience**.
+
+### 2.2 Specify report details (screen 1 of 3)
+1. **Report name:** `harness-ccm-cur`
+2. ✅ Tick **Include resource IDs**.
+3. ✅ Tick **Split cost allocation data**.
+4. ✅ Tick **Refresh automatically**.
+5. Click **Next**.
+
+### 2.3 Create the S3 bucket (popup)
+- First create one S3 Bucket
+1. Under **Configure S3 Bucket**, click **Configure**.
+2. Select **Create a bucket**.
+3. **S3 bucket name:** `harness-ccm-cur-713939171080`
+4. **Region:** `us-east-1`
+5. Click **Next**.
+6. ✅ Tick **I have confirmed that this policy is correct**.
+7. Click **Save**.
+
+### 2.4 Set delivery options (screen 2 of 3)
+1. **S3 path prefix:** `ccm`
+2. **Report data time granularity:** **Hourly**
+3. **Report versioning:** **Overwrite existing report**
+4. ⬜ **Report data integration:** leave all unticked.
+5. **Compression type:** **GZIP**
+6. Click **Next**.
+
+### 2.5 Review and create (screen 3 of 3)
+1. Check the summary.
+2. Click **Create report**.
+
+### 2.6 Save these values for Step 3
+
+| Value | What you entered |
+|-------|------------------|
+| Report name | `harness-ccm-cur` |
+| S3 bucket | `harness-ccm-cur-713939171080` |
+| S3 path prefix | `ccm` |
 
 ---
 
@@ -50,7 +86,7 @@ CCM reads your bill from a CUR file in S3.
 
 1. CCM → **Account Settings → Cloud Integration (Connectors) → + New Connector → AWS**
 2. Enter your **AWS Account ID**
-3. **Cost and Usage Report:** enter the CUR name (`harness-ccm-cur`) + the S3 bucket
+3. **Cost and Usage Report:** enter the 3 values from Step 2 — **report name** `harness-ccm-cur`, your **S3 bucket name**, and the **S3 path prefix** `ccm`
 4. **Features to enable:**
    - **Cost Visibility** ✅ (always)
    - **Resource Inventory Management / Recommendations** ✅ (for rightsizing)
